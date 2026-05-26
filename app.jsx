@@ -174,6 +174,7 @@ function SnapspendTweaks({ tweaks, setTweak }) {
 }
 
 function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   // The sidebar logo always shows the user's business name as the primary
   // mark, with "Snapspend" tucked underneath. If the user hasn't customised
   // the name (still says "Snapspend"), we collapse to a single wordmark to
@@ -197,20 +198,33 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
         }
       </div>
 
-      {NAV.map((group) =>
-      <div className="nav-group" key={group.group}>
-          <div className="nav-label">{group.group}</div>
-          {group.items.map((it) =>
-        <button
-          key={it.id}
-          className={"nav-item " + (route === it.id ? "active" : "")}
-          onClick={() => setRoute(it.id)}>
-              <Icon name={it.icon} size={15} />
-              {it.label}
-            </button>
+      <button
+        className="btn mobile-menu-toggle"
+        onClick={() => setMobileMenuOpen((v) => !v)}
+        aria-label="Toggle navigation menu"
+        aria-expanded={mobileMenuOpen}>
+        <Icon name="more" size={14} /> Menu
+      </button>
+
+      <div className={"sidebar-menu " + (mobileMenuOpen ? "open" : "")}>
+        {NAV.map((group) =>
+        <div className="nav-group" key={group.group}>
+            <div className="nav-label">{group.group}</div>
+            {group.items.map((it) =>
+          <button
+            key={it.id}
+            className={"nav-item " + (route === it.id ? "active" : "")}
+            onClick={() => {
+              setRoute(it.id);
+              setMobileMenuOpen(false);
+            }}>
+                <Icon name={it.icon} size={15} />
+                {it.label}
+              </button>
+          )}
+          </div>
         )}
-        </div>
-      )}
+      </div>
 
       <div className="userchip">
         <div className="avatar">
