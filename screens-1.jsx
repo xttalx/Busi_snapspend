@@ -37,6 +37,28 @@ function lastMonthKeys(count, from = new Date()) {
   return keys;
 }
 
+function billPaidDate(bill) {
+  const paidEvent = [...(bill.statusHistory || [])].
+  reverse().
+  find((h) => (h.to || "").toLowerCase() === "paid");
+  if (paidEvent?.at) return paidEvent.at.slice(0, 10);
+  return bill.paidDate || bill.issueDate || "";
+}
+
+function paidBillAsExpense(bill) {
+  return {
+    id: "bill-" + bill.id,
+    date: billPaidDate(bill),
+    vendor: bill.vendor || "Bill payment",
+    note: bill.number ? `Bill ${bill.number}` : "Bill payment",
+    category: "bills",
+    method: "Bill paid",
+    amount: Number(bill.amount || 0),
+    receipt: bill.attachment || null,
+    isBill: true,
+  };
+}
+
 function Dashboard({ state, go }) {
   const { expenses, bills = [], invoices, clients, paystubs } = state;
 
@@ -85,7 +107,11 @@ function Dashboard({ state, go }) {
   const outstanding = invoices.filter(i => i.status === "due" || i.status === "overdue")
     .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
 
-  const recent = [...expenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+  const paidBillRows = (bills || []).filter((b) => (b.status || "").toLowerCase() === "paid").map(paidBillAsExpense);
+  const recent = [...expenses.map((e) => ({ ...e, isBill: false })), ...paidBillRows].
+  filter((e) => e.date).
+  sort((a, b) => b.date.localeCompare(a.date)).
+  slice(0, 6);
   const recentInvoices = [...invoices].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
@@ -187,7 +213,9 @@ function Dashboard({ state, go }) {
               </tr>
             )}
             {recent.map(e => {
-              const cat = state.CATEGORIES.find(c => c.id === e.category);
+              const cat = e.isBill ?
+              { name: "Bills", color: "#6e1f1f" } :
+              state.CATEGORIES.find(c => c.id === e.category);
               return (
                 <tr key={e.id}>
                   <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{e.date.slice(5)}</span></td>
@@ -196,7 +224,7 @@ function Dashboard({ state, go }) {
                     <div className="sub">{e.note}</div>
                   </td>
                   <td>
-                    <span className="cat-tag"><span className="swatch" style={{ background: cat.color }}></span>{cat.name}</span>
+                    <span className="cat-tag"><span className="swatch" style={{ background: cat?.color || "#999" }}></span>{cat?.name || "Other"}</span>
                   </td>
                   <td className="num">{fmtMoney(e.amount)}</td>
                 </tr>
@@ -501,12 +529,21 @@ function Expenses({ state, dispatch, toast }) {
   const [drawer, setDrawer] = useState(false);
   const [viewing, setViewing] = useState(null); // expense whose receipt is open
 
+  const paidBillEntries = useMemo(() =>
+  (state.bills || []).
+  filter((b) => (b.status || "").toLowerCase() === "paid").
+  map(paidBillAsExpense), [state.bills]);
+
+  const ledgerEntries = useMemo(() =>
+  [...state.expenses.map((e) => ({ ...e, isBill: false })), ...paidBillEntries].
+  filter((e) => e.date), [state.expenses, paidBillEntries]);
+
   const filtered = useMemo(() => {
-    return state.expenses
+    return ledgerEntries
       .filter(e => filter === "all" || e.category === filter)
-      .filter(e => !q || e.vendor.toLowerCase().includes(q.toLowerCase()) || e.note.toLowerCase().includes(q.toLowerCase()))
+      .filter(e => !q || e.vendor.toLowerCase().includes(q.toLowerCase()) || (e.note || "").toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [state.expenses, filter, q]);
+  }, [ledgerEntries, filter, q]);
 
   const total = filtered.reduce((s, e) => s + e.amount, 0);
 
@@ -526,6 +563,10 @@ function Expenses({ state, dispatch, toast }) {
                 {c.name}
               </button>
             ))}
+            <button className={"chip " + (filter === "bills" ? "active" : "")} onClick={() => setFilter("bills")}>
+              <span className="swatch" style={{ background: "#6e1f1f", width: 7, height: 7, borderRadius: "50%", display: "inline-block" }}></span>
+              Bills (paid)
+            </button>
           </div>
         </div>
         <div className="right">
@@ -553,17 +594,19 @@ function Expenses({ state, dispatch, toast }) {
             </tr>
           )}
           {filtered.map(e => {
-            const cat = state.CATEGORIES.find(c => c.id === e.category);
+            const cat = e.isBill ?
+            { name: "Bills", color: "#6e1f1f" } :
+            state.CATEGORIES.find(c => c.id === e.category);
             const r = e.receipt;
             return (
               <tr key={e.id}>
                 <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{e.date}</span></td>
                 <td>
                   <div className="vendor">{e.vendor}</div>
-                  <div className="sub">{e.note}</div>
+                  <div className="sub">{e.note}{e.isBill ? " · from Bills" : ""}</div>
                 </td>
                 <td>
-                  <span className="cat-tag"><span className="swatch" style={{ background: cat.color }}></span>{cat.name}</span>
+                  <span className="cat-tag"><span className="swatch" style={{ background: cat?.color || "#999" }}></span>{cat?.name || "Other"}</span>
                 </td>
                 <td><span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-3)" }}>{e.method}</span></td>
                 <td>
