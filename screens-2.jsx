@@ -1,0 +1,1207 @@
+/* Invoices, Paystubs, Employees, Reports, Settings */
+const { useState: useState2, useMemo: useMemo2, useRef } = React;
+
+/* ---------- Invoices ---------- */
+function InvoiceEditor({ invoice, clients, onChange }) {
+  const update = (patch) => onChange({ ...invoice, ...patch });
+  const updateItem = (i, patch) => {
+    const items = invoice.items.map((it, idx) => idx === i ? { ...it, ...patch } : it);
+    update({ items });
+  };
+  const addItem = () => update({ items: [...invoice.items, { desc: "", sub: "", qty: 1, rate: 0 }] });
+  const removeItem = (i) => update({ items: invoice.items.filter((_, idx) => idx !== i) });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="row-2">
+        <div className="field">
+          <label>Invoice no.</label>
+          <input className="input mono" value={invoice.number} onChange={(e) => update({ number: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Status</label>
+          <select className="select" value={invoice.status} onChange={(e) => update({ status: e.target.value })}>
+            <option value="draft">Draft</option>
+            <option value="due">Due</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label>Client</label>
+        <select className="select" value={invoice.clientId} onChange={(e) => update({ clientId: e.target.value })}>
+          {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div className="row-2">
+        <div className="field">
+          <label>Issued</label>
+          <input className="input mono" type="date" value={invoice.date} onChange={(e) => update({ date: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Due</label>
+          <input className="input mono" type="date" value={invoice.due} onChange={(e) => update({ due: e.target.value })} />
+        </div>
+      </div>
+
+      <div>
+        <div className="line-items">
+          <span className="lbl">Description</span>
+          <span className="lbl" style={{ textAlign: "right" }}>Qty</span>
+          <span className="lbl" style={{ textAlign: "right" }}>Rate</span>
+          <span className="lbl" style={{ textAlign: "right" }}>Amount</span>
+          <span></span>
+          {invoice.items.map((it, i) =>
+          <React.Fragment key={i}>
+              <input className="input" value={it.desc} placeholder="Line description" onChange={(e) => updateItem(i, { desc: e.target.value })} />
+              <input className="input mono" type="number" value={it.qty} onChange={(e) => updateItem(i, { qty: Number(e.target.value) })} style={{ textAlign: "right" }} />
+              <input className="input mono" type="number" step="0.01" value={it.rate} onChange={(e) => updateItem(i, { rate: Number(e.target.value) })} style={{ textAlign: "right" }} />
+              <span className="calc">{fmtMoney(it.qty * it.rate)}</span>
+              <button className="iconbtn" onClick={() => removeItem(i)} title="Remove"><Icon name="close" size={12} /></button>
+            </React.Fragment>
+          )}
+        </div>
+        <button className="btn ghost sm" onClick={addItem} style={{ marginTop: 10 }}>
+          <Icon name="plus" size={12} /> Add line item
+        </button>
+      </div>
+
+      <div className="row-2">
+        <div className="field">
+          <label>Tax rate (%)</label>
+          <input className="input mono" type="number" step="0.01" value={(invoice.taxRate || 0) * 100}
+          onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })} />
+        </div>
+        <div className="field">
+          <label>Currency</label>
+          <input className="input mono" value="USD" disabled style={{ opacity: 0.6 }} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Notes / terms</label>
+        <textarea className="textarea" value={invoice.notes} onChange={(e) => update({ notes: e.target.value })} placeholder="Payment terms, thank-you note…" />
+      </div>
+    </div>);
+
+}
+
+function InvoicesScreen({ state, dispatch, business, toast, params }) {
+  const [selected, setSelected] = useState2(params?.focusId || state.invoices[0] && state.invoices[0].id);
+  const [mode, setMode] = useState2("preview"); // edit | preview
+
+  const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
+  const client = state.clients.find((c) => c.id === inv.clientId);
+
+  const createNew = () => {
+    const num = "INV-" + String(144 + state.invoices.filter((i) => i.number.startsWith("INV-")).length).padStart(4, "0");
+    const today = new Date();
+    const due = new Date(today.getTime() + 30 * 86400000);
+    const newInv = {
+      id: "i" + Date.now(),
+      number: num,
+      clientId: state.clients[0].id,
+      date: today.toISOString().slice(0, 10),
+      due: due.toISOString().slice(0, 10),
+      status: "draft",
+      items: [{ desc: "New line item", sub: "", qty: 1, rate: 0 }],
+      taxRate: 0,
+      notes: ""
+    };
+    dispatch({ type: "ADD_INVOICE", invoice: newInv });
+    setSelected(newInv.id);
+    setMode("edit");
+  };
+
+  return (
+    <>
+      <div className="toolbar">
+        <div className="left">
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            {state.invoices.length} invoices
+          </span>
+        </div>
+        <div className="right">
+          <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+            <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
+            onClick={() => setMode("preview")}
+            style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+              Preview
+            </button>
+            <button className={"btn sm " + (mode === "edit" ? "" : "ghost")}
+            onClick={() => setMode("edit")}
+            style={mode === "edit" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+              Edit
+            </button>
+          </div>
+          <button className="btn" onClick={() => window.print()}>
+            <Icon name="print" size={13} /> Print
+          </button>
+          <button className="btn primary" onClick={() => {window.print();toast("Invoice exported as PDF");}}>
+            <Icon name="download" size={13} /> Download PDF
+          </button>
+          <button className="btn primary" onClick={createNew} style={{ marginLeft: 6 }}>
+            <Icon name="plus" size={13} /> New invoice
+          </button>
+        </div>
+      </div>
+
+      <div className="two-col" style={{ fontFamily: "Arial" }}>
+        <div className="list-card">
+          {state.invoices.map((i) => {
+            const c = state.clients.find((cl) => cl.id === i.clientId);
+            const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
+            return (
+              <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
+                <span className="name" style={{ fontFamily: "Arial" }}>{c.name}</span>
+                <span className="amount">{fmtMoney(total)}</span>
+                <span className="meta">{i.number} · {fmtDate(i.date)}</span>
+                <select
+                  className={"status status-select " + i.status}
+                  value={i.status}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    dispatch({ type: "UPDATE_INVOICE", invoice: { ...i, status: next } });
+                    toast(`${i.number} → ${next.charAt(0).toUpperCase() + next.slice(1)}`);
+                  }}>
+                  <option value="draft">Draft</option>
+                  <option value="due">Due</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>);
+
+          })}
+        </div>
+
+        <div>
+          {mode === "edit" ?
+          <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)" }}>
+              <InvoiceEditor
+              invoice={inv}
+              clients={state.clients}
+              onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: patched })} />
+            
+            </div> :
+
+          <InvoiceDocument invoice={inv} client={client} business={business} />
+          }
+        </div>
+      </div>
+    </>);
+
+}
+window.InvoicesScreen = InvoicesScreen;
+
+/* ---------- Paystubs ---------- */
+function PaystubsScreen({ state, dispatch, business, toast, params }) {
+  const today = new Date();
+  const fifteenAgo = new Date(today.getTime() - 15 * 86400000);
+  const [employeeId, setEmployeeId] = useState2(params?.employeeId || state.employees[0].id);
+  const [start, setStart] = useState2(fifteenAgo.toISOString().slice(0, 10));
+  const [end, setEnd] = useState2(today.toISOString().slice(0, 10));
+  const [hours, setHours] = useState2(80);
+  const [issued, setIssued] = useState2(today.toISOString().slice(0, 10));
+  const [stub, setStub] = useState2(state.paystubs[0]);
+  const [generated, setGenerated] = useState2(false);
+
+  // Confirmation modal state — opened before actually creating the stub.
+  const [confirmOpen, setConfirmOpen] = useState2(false);
+  const [confirmTaxes, setConfirmTaxes] = useState2([]);
+  const [confirmDeductions, setConfirmDeductions] = useState2([]);
+
+  const emp = state.employees.find((e) => e.id === employeeId) || state.employees[0];
+
+  React.useEffect(() => {
+    if (params?.employeeId && params.employeeId !== employeeId) {
+      setEmployeeId(params.employeeId);
+      setGenerated(false);
+    }
+  }, [params?.employeeId]);
+
+  // Compute gross + earnings from current form state.
+  const computeGross = () => {
+    if (emp.payType === "Hourly") {
+      const g = +(emp.payRate * hours).toFixed(2);
+      return { gross: g, earnings: [{ k: `Regular hours · ${hours} @ $${emp.payRate}`, v: g }] };
+    }
+    const g = +(emp.payRate / 24).toFixed(2);
+    return { gross: g, earnings: [{ k: "Regular salary (semi-monthly)", v: g }] };
+  };
+
+  // STEP 1: open the confirmation modal preloaded with the employee's
+  // country withholdings. User can edit / add / remove before confirming.
+  const openConfirm = () => {
+    const preset = (window.SEED.COUNTRY_PRESETS || {})[emp.country || "United States"] || [];
+    setConfirmTaxes(preset.map((p, i) => ({ id: "t" + Date.now() + "_" + i, name: p.name, rate: p.rate })));
+    setConfirmDeductions([]);
+    setConfirmOpen(true);
+  };
+
+  // STEP 2: user confirmed — actually create the stub using their final rates.
+  const confirmGenerate = () => {
+    const { gross, earnings } = computeGross();
+    const taxes = confirmTaxes.map((t) => ({
+      k: t.name,
+      v: +(gross * (Number(t.rate) || 0)).toFixed(2)
+    })).filter((t) => t.v > 0);
+    const deductions = confirmDeductions.map((d) => ({
+      k: d.name,
+      v: +(gross * (Number(d.rate) || 0) + (Number(d.fixed) || 0)).toFixed(2)
+    })).filter((d) => d.v > 0);
+
+    const newStub = {
+      id: "p" + Date.now(),
+      employeeId,
+      periodStart: start,
+      periodEnd: end,
+      issued,
+      gross,
+      hours: emp.payType === "Hourly" ? hours : null,
+      earnings,
+      taxes,
+      deductions
+    };
+    dispatch({ type: "ADD_PAYSTUB", stub: newStub });
+    setStub(newStub);
+    setGenerated(true);
+    setConfirmOpen(false);
+    toast(`Generated pay statement for ${emp.name}`);
+  };
+
+  const { gross: previewGross } = computeGross();
+  const previewTaxTotal = confirmTaxes.reduce((s, t) => s + previewGross * (Number(t.rate) || 0), 0);
+  const previewDedTotal = confirmDeductions.reduce((s, d) => s + previewGross * (Number(d.rate) || 0) + (Number(d.fixed) || 0), 0);
+  const previewNet = previewGross - previewTaxTotal - previewDedTotal;
+
+  const employeeStubs = state.paystubs.filter((p) => p.employeeId === employeeId);
+
+  return (
+    <>
+      <div className="toolbar">
+        <div className="left">
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            {state.paystubs.length} statements on file
+          </span>
+        </div>
+        <div className="right">
+          <button className="btn" onClick={() => window.print()}>
+            <Icon name="print" size={13} /> Print
+          </button>
+          <button className="btn primary" onClick={() => {window.print();toast("Pay statement exported as PDF");}}>
+            <Icon name="download" size={13} /> Download PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="two-col">
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 22, background: "var(--paper)" }}>
+            <div className="kicker" style={{ marginBottom: 12 }}>Generate statement</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div className="field">
+                <label>Employee</label>
+                <select className="select" value={employeeId} onChange={(e) => {setEmployeeId(e.target.value);setGenerated(false);}}>
+                  {state.employees.map((e) => <option key={e.id} value={e.id}>{e.name} · {e.role}</option>)}
+                </select>
+              </div>
+              <div className="row-2">
+                <div className="field">
+                  <label>Period start</label>
+                  <input className="input mono" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label>Period end</label>
+                  <input className="input mono" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+                </div>
+              </div>
+              <div className="row-2">
+                <div className="field">
+                  <label>Issue date</label>
+                  <input className="input mono" type="date" value={issued} onChange={(e) => setIssued(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label>{emp.payType === "Hourly" ? "Hours worked" : "Pay basis"}</label>
+                  {emp.payType === "Hourly" ?
+                  <input className="input mono" type="number" value={hours} onChange={(e) => setHours(Number(e.target.value))} /> :
+
+                  <input className="input mono" value="Semi-monthly" disabled style={{ opacity: 0.6 }} />
+                  }
+                </div>
+              </div>
+              <button className="btn primary" onClick={openConfirm} style={{ alignSelf: "flex-start" }}>
+                <Icon name="sparkles" size={13} /> Generate statement
+              </button>
+              <span className="help" style={{ marginTop: -6 }}>
+                You'll review the income withholding categories for <b>{emp.country || "United States"}</b> before the statement is created.
+              </span>
+            </div>
+          </div>
+
+          {employeeStubs.length > 0 &&
+          <div>
+              <div className="kicker" style={{ marginBottom: 10 }}>Past statements · {emp.name.split(" ")[0]}</div>
+              <div className="list-card">
+                {employeeStubs.map((p) =>
+              <div key={p.id} className={"row " + (p.id === stub.id ? "active" : "")} onClick={() => {setStub(p);setGenerated(true);}}>
+                    <span className="name" style={{ fontSize: 14 }}>{fmtDate(p.periodStart)} → {fmtDate(p.periodEnd)}</span>
+                    <span className="amount">{fmtMoney(p.gross)}</span>
+                    <span className="meta">Issued {fmtDate(p.issued)}</span>
+                  </div>
+              )}
+              </div>
+            </div>
+          }
+        </div>
+
+        <div>
+          {generated || employeeStubs.length > 0 ?
+          <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} /> :
+
+          <div className="empty" style={{ padding: 60 }}>
+              <div style={{ fontFamily: "var(--serif)", fontSize: 22, color: "var(--ink-2)", marginBottom: 6 }}>
+                No statements yet
+              </div>
+              Fill the form on the left and generate a pay statement to preview it here.
+            </div>
+          }
+        </div>
+      </div>
+
+      {/* Confirmation modal — shown before each paystub is created. */}
+      {confirmOpen &&
+      <>
+          <div className="modal-scrim" onClick={() => setConfirmOpen(false)}></div>
+          <div className="modal">
+            <div className="modal-head">
+              <div>
+                <div className="kicker">Confirm withholding categories</div>
+                <h3>Review before generating · {emp.name}</h3>
+                <p className="modal-sub">
+                  Loaded statutory categories for <b>{emp.country || "United States"}</b>.
+                  Edit any rate, rename a category, or add one-off deductions before the statement is created. Changes here apply to this statement only.
+                </p>
+              </div>
+              <button className="iconbtn" onClick={() => setConfirmOpen(false)}><Icon name="close" /></button>
+            </div>
+
+            <div className="modal-body">
+              <div className="confirm-summary">
+                <div>
+                  <div className="kicker">Gross pay</div>
+                  <div className="confirm-num">{fmtMoney(previewGross)}</div>
+                </div>
+                <div>
+                  <div className="kicker">Taxes</div>
+                  <div className="confirm-num minus">−{fmtMoney(previewTaxTotal)}</div>
+                </div>
+                <div>
+                  <div className="kicker">Deductions</div>
+                  <div className="confirm-num minus">−{fmtMoney(previewDedTotal)}</div>
+                </div>
+                <div>
+                  <div className="kicker">Net pay</div>
+                  <div className="confirm-num net">{fmtMoney(previewNet)}</div>
+                </div>
+              </div>
+
+              <div className="modal-section">
+                <div className="modal-section-head">
+                  <h4>Income withheld · {emp.country || "United States"}</h4>
+                  <span className="meta">{confirmTaxes.length} categories</span>
+                </div>
+                <div className="rate-table">
+                  <span className="lbl">Category</span>
+                  <span className="lbl" style={{ textAlign: "right" }}>Rate</span>
+                  <span></span>
+                  {confirmTaxes.map((t, i) =>
+                <React.Fragment key={t.id}>
+                      <input className="input" value={t.name}
+                  onChange={(e) => {
+                    const next = [...confirmTaxes];
+                    next[i] = { ...t, name: e.target.value };
+                    setConfirmTaxes(next);
+                  }} />
+                      <div style={{ position: "relative" }}>
+                        <input className="input mono" type="number" step="0.001"
+                    value={+(Number(t.rate) * 100).toFixed(3)}
+                    style={{ paddingRight: 22, textAlign: "right" }}
+                    onChange={(e) => {
+                      const next = [...confirmTaxes];
+                      next[i] = { ...t, rate: Number(e.target.value) / 100 };
+                      setConfirmTaxes(next);
+                    }} />
+                        <span style={{
+                      position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                      fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-3)", pointerEvents: "none"
+                    }}>%</span>
+                      </div>
+                      <button className="iconbtn" title="Remove"
+                  onClick={() => setConfirmTaxes(confirmTaxes.filter((_, idx) => idx !== i))}>
+                        <Icon name="close" size={12} />
+                      </button>
+                    </React.Fragment>
+                )}
+                </div>
+                <button className="btn ghost sm" style={{ marginTop: 8, paddingLeft: 0 }}
+              onClick={() => setConfirmTaxes([...confirmTaxes, { id: "t" + Date.now(), name: "New withholding", rate: 0 }])}>
+                  <Icon name="plus" size={12} /> Add withholding
+                </button>
+              </div>
+
+              <div className="modal-section">
+                <div className="modal-section-head">
+                  <h4>Other deductions <span style={{ color: "var(--ink-3)", fontWeight: 400, fontFamily: "var(--sans)", fontSize: 13 }}>(optional)</span></h4>
+                  <span className="meta">benefits, contributions, garnishments</span>
+                </div>
+                <div className="rate-table" style={{ gridTemplateColumns: "1fr 90px 90px 28px" }}>
+                  <span className="lbl">Deduction</span>
+                  <span className="lbl" style={{ textAlign: "right" }}>% gross</span>
+                  <span className="lbl" style={{ textAlign: "right" }}>Fixed</span>
+                  <span></span>
+                  {confirmDeductions.map((d, i) =>
+                <React.Fragment key={d.id}>
+                      <input className="input" value={d.name}
+                  onChange={(e) => {
+                    const next = [...confirmDeductions];
+                    next[i] = { ...d, name: e.target.value };
+                    setConfirmDeductions(next);
+                  }} />
+                      <input className="input mono" type="number" step="0.01"
+                  value={+(Number(d.rate || 0) * 100).toFixed(2)}
+                  style={{ textAlign: "right" }}
+                  onChange={(e) => {
+                    const next = [...confirmDeductions];
+                    next[i] = { ...d, rate: Number(e.target.value) / 100 };
+                    setConfirmDeductions(next);
+                  }} />
+                      <input className="input mono" type="number" step="0.01"
+                  value={d.fixed || 0}
+                  style={{ textAlign: "right" }}
+                  onChange={(e) => {
+                    const next = [...confirmDeductions];
+                    next[i] = { ...d, fixed: Number(e.target.value) };
+                    setConfirmDeductions(next);
+                  }} />
+                      <button className="iconbtn" title="Remove"
+                  onClick={() => setConfirmDeductions(confirmDeductions.filter((_, idx) => idx !== i))}>
+                        <Icon name="close" size={12} />
+                      </button>
+                    </React.Fragment>
+                )}
+                </div>
+                <button className="btn ghost sm" style={{ marginTop: 8, paddingLeft: 0 }}
+              onClick={() => setConfirmDeductions([...confirmDeductions, { id: "d" + Date.now(), name: "New deduction", rate: 0, fixed: 0 }])}>
+                  <Icon name="plus" size={12} /> Add deduction
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-foot">
+              <button className="btn ghost" onClick={() => setConfirmOpen(false)}>Cancel</button>
+              <button className="btn primary" onClick={confirmGenerate}>
+                <Icon name="check" size={13} /> Confirm & generate
+              </button>
+            </div>
+          </div>
+        </>
+      }
+    </>);
+
+}
+window.PaystubsScreen = PaystubsScreen;
+
+/* ---------- Employees ---------- */
+function EmployeeDrawer({ open, employee, onClose, onSave, onDelete }) {
+  const isEdit = !!employee;
+  const blank = {
+    name: "", role: "", payType: "Salary", payRate: 60000,
+    taxRate: 0.20, since: new Date().toISOString().slice(0, 7),
+    country: "United States"
+  };
+  const [form, setForm] = useState2(blank);
+
+  React.useEffect(() => {
+    if (open) setForm(employee ? { ...employee } : blank);
+  }, [open, employee]);
+
+  if (!open) return null;
+  const valid = form.name.trim() && form.role.trim() && form.payRate > 0;
+  const countryWithholdings = (window.SEED.COUNTRY_PRESETS || {})[form.country] || [];
+
+  return (
+    <>
+      <div className="drawer-scrim" onClick={onClose}></div>
+      <div className="drawer">
+        <div className="head">
+          <div>
+            <div className="kicker">{isEdit ? "Edit person" : "Add person"}</div>
+            <h3>{isEdit ? form.name || "Untitled" : "Add to your team"}</h3>
+          </div>
+          <button className="iconbtn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+        </div>
+        <div className="body">
+          <div className="field">
+            <label>Full name</label>
+            <input className="input" autoFocus value={form.name}
+            placeholder="e.g. Marisol Vega"
+            onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>Role</label>
+            <input className="input" value={form.role}
+            placeholder="e.g. Senior Designer"
+            onChange={(e) => setForm({ ...form, role: e.target.value })} />
+          </div>
+
+          <div className="row-2">
+            <div className="field">
+              <label>Pay type</label>
+              <select className="select" value={form.payType} onChange={(e) => {
+                const next = e.target.value;
+                setForm({ ...form, payType: next, payRate: next === "Salary" ? 60000 : 35 });
+              }}>
+                <option>Salary</option>
+                <option>Hourly</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>{form.payType === "Salary" ? "Annual rate" : "Hourly rate"}</label>
+              <input className="input mono" type="number" step="0.01" value={form.payRate}
+              onChange={(e) => setForm({ ...form, payRate: Number(e.target.value) })} />
+            </div>
+          </div>
+
+          <div className="row-2">
+            <div className="field">
+              <label>Started</label>
+              <input className="input mono" type="month" value={form.since}
+              onChange={(e) => setForm({ ...form, since: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Tax bracket (%)</label>
+              <input className="input mono" type="number" step="0.01" value={+(form.taxRate * 100).toFixed(2)}
+              onChange={(e) => setForm({ ...form, taxRate: Number(e.target.value) / 100 })} />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Country of employment</label>
+            <select className="select" value={form.country}
+            onChange={(e) => setForm({ ...form, country: e.target.value })}>
+              {Object.keys(window.SEED.COUNTRY_PRESETS).map((k) => <option key={k}>{k}</option>)}
+            </select>
+            <span className="help">
+              Determines which income withholding categories appear on this person's pay statements.
+            </span>
+          </div>
+
+          {/* Preview of withholdings for the selected country */}
+          <div style={{
+            border: "1px solid var(--rule)",
+            background: "var(--paper-2)",
+            borderRadius: "var(--r-md)",
+            padding: "12px 14px"
+          }}>
+            <div className="kicker" style={{ fontSize: 9.5, marginBottom: 8 }}>
+              Withholdings · {form.country}
+            </div>
+            {countryWithholdings.length === 0 ?
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                No statutory withholdings preset. You'll define them when generating each statement.
+              </div> :
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {countryWithholdings.map((w, i) =>
+              <div key={i} style={{
+                display: "flex", justifyContent: "space-between",
+                fontSize: 12.5, fontFamily: "var(--mono)", color: "var(--ink-2)"
+              }}>
+                    <span>{w.name}</span>
+                    <span>{(w.rate * 100).toFixed(2)}%</span>
+                  </div>
+              )}
+              </div>
+            }
+            <div className="help" style={{ marginTop: 8 }}>
+              You'll be able to fine-tune these every time you generate a statement.
+            </div>
+          </div>
+        </div>
+        <div className="foot">
+          {isEdit && onDelete &&
+          <button className="btn ghost" onClick={() => onDelete(employee.id)}
+          style={{ color: "var(--accent)", marginRight: "auto" }}>
+              <Icon name="trash" size={13} /> Remove
+            </button>
+          }
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={!valid}
+          style={{ opacity: valid ? 1 : 0.5 }}
+          onClick={() => onSave({ ...form, id: form.id || "u" + Date.now() })}>
+            <Icon name="check" size={13} /> {isEdit ? "Save changes" : "Add person"}
+          </button>
+        </div>
+      </div>
+    </>);
+
+}
+
+function EmployeesScreen({ state, dispatch, toast, go, params }) {
+  const [drawer, setDrawer] = useState2(null); // null | "new" | employee object
+
+  React.useEffect(() => {
+    if (params?.openAdd) setDrawer("new");
+  }, [params]);
+
+  const handleSave = (emp) => {
+    if (state.employees.find((e) => e.id === emp.id)) {
+      dispatch({ type: "UPDATE_EMPLOYEE", employee: emp });
+      toast(`${emp.name} updated`);
+    } else {
+      dispatch({ type: "ADD_EMPLOYEE", employee: emp });
+      toast(`${emp.name} added to the team`);
+    }
+    setDrawer(null);
+  };
+
+  const handleDelete = (id) => {
+    const e = state.employees.find((x) => x.id === id);
+    dispatch({ type: "REMOVE_EMPLOYEE", id });
+    toast(`Removed ${e ? e.name : "person"}`);
+    setDrawer(null);
+  };
+
+  return (
+    <>
+      <div className="toolbar">
+        <div className="left">
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            {state.employees.length} on the team
+          </span>
+        </div>
+        <div className="right">
+          <button className="btn primary" onClick={() => setDrawer("new")}>
+            <Icon name="plus" size={13} /> Add person
+          </button>
+        </div>
+      </div>
+
+      <div className="emp-grid">
+        {state.employees.map((e) => {
+          const initials = e.name.split(" ").map((s) => s[0]).join("");
+          const country = e.country || "—";
+          return (
+            <div key={e.id} className="emp-card">
+              <div className="top">
+                <div className="avatar">{initials}</div>
+                <div>
+                  <h4>{e.name}</h4>
+                  <div className="role">{e.role}</div>
+                </div>
+              </div>
+              <div className="meta-grid">
+                <div><div className="k">Pay type</div><div className="v">{e.payType}</div></div>
+                <div><div className="k">{e.payType === "Salary" ? "Annual" : "Hourly"}</div>
+                  <div className="v">{e.payType === "Salary" ? fmtMoney(e.payRate) : "$" + e.payRate + "/hr"}</div>
+                </div>
+                <div><div className="k">Country</div><div className="v" style={{ fontSize: 12, fontFamily: "var(--sans)" }}>{country}</div></div>
+                <div><div className="k">Since</div><div className="v">{e.since}</div></div>
+              </div>
+              <div className="actions">
+                <button className="btn sm" onClick={() => go("paystubs", { employeeId: e.id })}>
+                  <Icon name="paystub" size={13} /> Pay statement
+                </button>
+                <button className="btn sm ghost" onClick={() => setDrawer(e)}><Icon name="edit" size={13} /></button>
+              </div>
+            </div>);
+
+        })}
+      </div>
+
+      <EmployeeDrawer
+        open={drawer !== null}
+        employee={drawer === "new" ? null : drawer}
+        onClose={() => setDrawer(null)}
+        onSave={handleSave}
+        onDelete={handleDelete} />
+      
+    </>);
+
+}
+window.EmployeesScreen = EmployeesScreen;
+
+/* ---------- Reports ---------- */
+function ReportsScreen({ state }) {
+  const byCategory = useMemo2(() => {
+    const m = {};
+    state.expenses.forEach((e) => {m[e.category] = (m[e.category] || 0) + e.amount;});
+    return state.CATEGORIES.map((c) => ({ ...c, value: m[c.id] || 0 })).sort((a, b) => b.value - a.value);
+  }, [state.expenses]);
+
+  const maxCat = Math.max(...byCategory.map((c) => c.value), 1);
+  const totalSpend = byCategory.reduce((s, c) => s + c.value, 0);
+
+  const byMonth = useMemo2(() => {
+    const months = ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"];
+    const synthetic = { "2025-12": 1840, "2026-01": 2120, "2026-02": 1740, "2026-03": 2480, "2026-04": 2310 };
+    const m = { ...synthetic };
+    state.expenses.forEach((e) => {
+      const k = e.date.slice(0, 7);
+      m[k] = (m[k] || 0) + e.amount;
+    });
+    return months.map((k) => ({ k, v: m[k] || 0 }));
+  }, [state.expenses]);
+
+  const maxMonth = Math.max(...byMonth.map((m) => m.v), 1);
+
+  return (
+    <>
+      <div className="kpis">
+        <div className="kpi">
+          <div className="kicker">Total tracked · 6 months</div>
+          <div className="value"><span className="sym">$</span>{byMonth.reduce((s, m) => s + m.v, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+        </div>
+        <div className="kpi">
+          <div className="kicker">Avg. monthly spend</div>
+          <div className="value"><span className="sym">$</span>{Math.round(byMonth.reduce((s, m) => s + m.v, 0) / byMonth.length).toLocaleString()}</div>
+        </div>
+        <div className="kpi">
+          <div className="kicker">Top category</div>
+          <div className="value" style={{ fontSize: 26 }}>{byCategory[0].name}</div>
+          <div className="delta">{fmtMoney(byCategory[0].value)} this period</div>
+        </div>
+      </div>
+
+      <div className="report-grid">
+        <div>
+          <div className="section-head" style={{ margin: "0 0 14px" }}>
+            <h2>Spend by category</h2>
+            <span className="meta">Last 6 months</span>
+          </div>
+          <div>
+            {byCategory.map((c) =>
+            <div key={c.id} className="bar-row">
+                <span className="lbl">
+                  <span className="cat-tag"><span className="swatch" style={{ background: c.color }}></span>{c.name}</span>
+                </span>
+                <div className="bar">
+                  <div className="fill" style={{ width: c.value / maxCat * 100 + "%", background: c.color }}></div>
+                </div>
+                <span className="v">{fmtMoney(c.value)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="section-head" style={{ margin: "0 0 14px" }}>
+            <h2>Monthly cadence</h2>
+            <span className="meta">$</span>
+          </div>
+          <svg viewBox="0 0 320 200" width="100%" height="220" style={{ display: "block" }}>
+            {/* baseline */}
+            <line x1="40" y1="170" x2="320" y2="170" stroke="var(--rule)" strokeWidth="1" />
+            {byMonth.map((m, i) => {
+              const x = 40 + i * 50;
+              const h = m.v / maxMonth * 130;
+              const y = 170 - h;
+              const label = new Date(m.k + "-01").toLocaleDateString("en-US", { month: "short" });
+              return (
+                <g key={m.k}>
+                  <rect x={x} y={y} width="30" height={h} fill="var(--accent)" opacity={i === byMonth.length - 1 ? 1 : 0.55} />
+                  <text x={x + 15} y="186" textAnchor="middle" fontSize="10" fontFamily="var(--mono)" fill="var(--ink-3)" letterSpacing="0.1em">{label.toUpperCase()}</text>
+                  <text x={x + 15} y={y - 6} textAnchor="middle" fontSize="10" fontFamily="var(--mono)" fill="var(--ink-2)">${Math.round(m.v / 100) / 10}k</text>
+                </g>);
+
+            })}
+          </svg>
+        </div>
+      </div>
+    </>);
+
+}
+window.ReportsScreen = ReportsScreen;
+
+/* ---------- Settings ---------- */
+function SettingsScreen({ business, setBusiness, toast }) {
+  const update = (patch) => setBusiness({ ...business, ...patch });
+  const COUNTRIES = window.SEED.COUNTRY_TAX_RATES || {};
+  const countryInfo = COUNTRIES[business.country] || COUNTRIES["United States"];
+
+  return (
+    <>
+      <div className="settings-grid">
+        <div>
+          <h3>User business</h3>
+          <p className="desc">
+            Your own business profile. Appears on every invoice and pay statement you issue, and shows in the sidebar as your logo.
+          </p>
+        </div>
+        <div className="form">
+          <div className="field">
+            <label>Business name</label>
+            <input className="input" value={business.name}
+              placeholder="Your registered business name"
+              onChange={(e) => update({ name: e.target.value })} />
+            <span className="help">
+              Shown big in the sidebar with <b>Snapspend</b> tucked underneath.
+            </span>
+          </div>
+          <div className="field">
+            <label>Owner / primary contact</label>
+            <input className="input" value={business.owner}
+              onChange={(e) => update({ owner: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input className="input" value={business.email}
+              onChange={(e) => update({ email: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>Mailing address</label>
+            <textarea className="textarea" value={business.address}
+              onChange={(e) => update({ address: e.target.value })} />
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-grid">
+        <div>
+          <h3>Financial preferences</h3>
+          <p className="desc">
+            Defaults applied to invoices and pay statements. Choose a country to load its sales / VAT / GST rate — you can override it after.
+          </p>
+        </div>
+        <div className="form">
+          <div className="field">
+            <label>Country of operation</label>
+            <select className="select" value={business.country || "United States"} onChange={(e) => {
+              const next = e.target.value;
+              const info = COUNTRIES[next];
+              update({
+                country: next,
+                taxRate: info ? info.taxRate : business.taxRate,
+                currency: info ? info.currency : business.currency,
+              });
+              toast(`Loaded ${next} financial defaults`);
+            }}>
+              {Object.keys(COUNTRIES).map((k) => <option key={k}>{k}</option>)}
+            </select>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>Currency</label>
+              <select className="select" value={business.currency} onChange={(e) => update({ currency: e.target.value })}>
+                {[...new Set(["USD ($)","EUR (€)","GBP (£)","CAD ($)","AUD ($)","INR (₹)","JPY (¥)","SGD ($)","NZD ($)","MXN ($)","BRL (R$)","ZAR (R)","AED (د.إ)","CHF (Fr)","SEK (kr)", business.currency])].map(c => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Default payment terms</label>
+              <select className="select" value={business.terms} onChange={(e) => update({ terms: e.target.value })}>
+                <option>Net 15</option>
+                <option>Net 30</option>
+                <option>Net 60</option>
+                <option>Due on receipt</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>{countryInfo.label} (%)</label>
+              <input className="input mono" type="number" step="0.01" value={+(business.taxRate * 100).toFixed(3)}
+                onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })} />
+              <span className="help">Default rate loaded from <b>{business.country || "—"}</b>. Edit to override.</span>
+            </div>
+            <div className="field">
+              <label>Fiscal year start</label>
+              <select className="select" value={business.fy} onChange={(e) => update({ fy: e.target.value })}>
+                <option>January</option>
+                <option>April</option>
+                <option>July</option>
+                <option>October</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-grid">
+        <div>
+          <h3>Document defaults</h3>
+          <p className="desc">Footer language and standard notes attached to every document.</p>
+        </div>
+        <div className="form">
+          <div className="field">
+            <label>Invoice footer note</label>
+            <textarea className="textarea" value={business.invoiceFooter} onChange={(e) => update({ invoiceFooter: e.target.value })} />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn primary" onClick={() => toast("Settings saved")}>
+              <Icon name="check" size={13} /> Save changes
+            </button>
+            <button className="btn ghost">Discard</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+window.SettingsScreen = SettingsScreen;
+
+/* ---------- Business clients ---------- */
+function ClientDrawer({ open, client, onClose, onSave, onDelete }) {
+  const isEdit = !!client;
+  const COUNTRIES = window.SEED.COUNTRY_TAX_RATES || {};
+  const blank = {
+    name: "",
+    contact: "",
+    email: "",
+    phone: "",
+    address: "",
+    country: "United States",
+    taxId: "",
+    notes: "",
+    since: new Date().toISOString().slice(0, 7),
+  };
+  const [form, setForm] = useState2(blank);
+
+  React.useEffect(() => {
+    if (open) setForm(client ? { ...client } : blank);
+  }, [open, client]);
+
+  if (!open) return null;
+  const valid = form.name.trim();
+
+  return (
+    <>
+      <div className="drawer-scrim" onClick={onClose}></div>
+      <div className="drawer">
+        <div className="head">
+          <div>
+            <div className="kicker">{isEdit ? "Edit client" : "New client"}</div>
+            <h3>{isEdit ? (form.name || "Untitled") : "Add a business client"}</h3>
+          </div>
+          <button className="iconbtn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+        </div>
+        <div className="body">
+          <div className="field">
+            <label>Client name</label>
+            <input className="input" autoFocus value={form.name}
+              placeholder="e.g. Northstar Labs"
+              onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="row-2">
+            <div className="field">
+              <label>Primary contact</label>
+              <input className="input" value={form.contact}
+                placeholder="Who do you work with?"
+                onChange={(e) => setForm({ ...form, contact: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>On boarded</label>
+              <input className="input mono" type="month" value={form.since}
+                onChange={(e) => setForm({ ...form, since: e.target.value })} />
+            </div>
+          </div>
+          <div className="row-2">
+            <div className="field">
+              <label>Email</label>
+              <input className="input" value={form.email}
+                placeholder="billing@example.com"
+                onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Phone</label>
+              <input className="input mono" value={form.phone}
+                placeholder="+1 (555) 000-0000"
+                onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </div>
+          </div>
+          <div className="field">
+            <label>Billing address</label>
+            <textarea className="textarea" value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          </div>
+          <div className="row-2">
+            <div className="field">
+              <label>Country</label>
+              <select className="select" value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}>
+                {Object.keys(COUNTRIES).map((k) => <option key={k}>{k}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Tax ID / VAT no.</label>
+              <input className="input mono" value={form.taxId}
+                placeholder="EIN, ABN, GSTIN, …"
+                onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
+            </div>
+          </div>
+          <div className="field">
+            <label>Notes</label>
+            <textarea className="textarea" value={form.notes}
+              placeholder="Payment habits, preferences, anything worth remembering."
+              onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          </div>
+        </div>
+        <div className="foot">
+          {isEdit && onDelete && (
+            <button className="btn ghost" onClick={() => onDelete(client.id)}
+              style={{ color: "var(--accent)", marginRight: "auto" }}>
+              <Icon name="trash" size={13} /> Remove
+            </button>
+          )}
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={!valid}
+            style={{ opacity: valid ? 1 : 0.5 }}
+            onClick={() => onSave({ ...form, id: form.id || ("c" + Date.now()) })}>
+            <Icon name="check" size={13} /> {isEdit ? "Save changes" : "Add client"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ClientsScreen({ state, dispatch, toast, go, params }) {
+  const [drawer, setDrawer] = useState2(null); // null | "new" | client object
+  const [q, setQ] = useState2("");
+
+  React.useEffect(() => {
+    if (params?.openAdd) setDrawer("new");
+  }, [params]);
+
+  const handleSave = (cl) => {
+    if (state.clients.find((c) => c.id === cl.id)) {
+      dispatch({ type: "UPDATE_CLIENT", client: cl });
+      toast(`${cl.name} saved`);
+    } else {
+      dispatch({ type: "ADD_CLIENT", client: cl });
+      toast(`${cl.name} added to your client list`);
+    }
+    setDrawer(null);
+  };
+
+  const handleDelete = (id) => {
+    const c = state.clients.find((x) => x.id === id);
+    dispatch({ type: "REMOVE_CLIENT", id });
+    toast(`Removed ${c ? c.name : "client"}`);
+    setDrawer(null);
+  };
+
+  const filtered = state.clients.filter((c) =>
+    !q || c.name.toLowerCase().includes(q.toLowerCase()) ||
+    (c.contact || "").toLowerCase().includes(q.toLowerCase()) ||
+    (c.email || "").toLowerCase().includes(q.toLowerCase())
+  );
+
+  // Invoice activity per client — count + outstanding amount, drives the
+  // small footer on each card. Lets the freelancer see at a glance who's
+  // got money in flight.
+  const activity = (clientId) => {
+    const invs = state.invoices.filter((i) => i.clientId === clientId);
+    const open = invs.filter((i) => i.status === "due" || i.status === "overdue");
+    const outstanding = open.reduce((s, i) =>
+      s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
+    return { total: invs.length, outstanding };
+  };
+
+  return (
+    <>
+      <div className="toolbar">
+        <div className="left">
+          <div className="search">
+            <Icon name="search" />
+            <input className="input" placeholder="Search clients…" value={q}
+              onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            {filtered.length} of {state.clients.length}
+          </span>
+        </div>
+        <div className="right">
+          <button className="btn primary" onClick={() => setDrawer("new")}>
+            <Icon name="plus" size={13} /> Add client
+          </button>
+        </div>
+      </div>
+
+      <div className="biz-grid">
+        {filtered.map((c) => {
+          const initials = c.name.split(" ").map((s) => s[0]).slice(0, 2).join("");
+          const act = activity(c.id);          return (
+            <div key={c.id} className="biz-card">
+              <div className="biz-card-top">
+                <div className="biz-avatar">{initials}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h4>{c.name}</h4>
+                  <div className="biz-owner">{c.contact || "—"}</div>
+                </div>
+                {act.outstanding > 0 && (
+                  <span className="biz-active-pill" style={{ background: "var(--warning-soft)", color: "var(--warning)" }}>
+                    {fmtMoney(act.outstanding)} due
+                  </span>
+                )}
+              </div>
+
+              <div className="biz-meta">
+                <div>
+                  <div className="k">Email</div>
+                  <div className="v" style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</div>
+                </div>
+                <div>
+                  <div className="k">Phone</div>
+                  <div className="v mono">{c.phone || "—"}</div>
+                </div>
+                <div>
+                  <div className="k">Country</div>
+                  <div className="v">{c.country || "—"}</div>
+                </div>
+                <div>
+                  <div className="k">Tax ID</div>
+                  <div className="v mono" style={{ fontSize: 11.5 }}>{c.taxId || "—"}</div>
+                </div>
+              </div>
+
+              {c.address && (
+                <div className="biz-address">
+                  {c.address.split("\n").map((line, i) => <div key={i}>{line}</div>)}
+                </div>
+              )}
+
+              {c.notes && (
+                <div className="biz-address" style={{ borderTop: "1px dashed var(--rule)", fontStyle: "italic" }}>
+                  "{c.notes}"
+                </div>
+              )}
+
+              <div className="biz-actions">
+                <button className="btn sm" onClick={() => go("invoices", { focusId: state.invoices.find((i) => i.clientId === c.id)?.id })}>
+                  <Icon name="invoice" size={12} /> {act.total} invoice{act.total === 1 ? "" : "s"}
+                </button>
+                <button className="btn sm ghost" onClick={() => setDrawer(c)}>
+                  <Icon name="edit" size={12} /> Edit
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <ClientDrawer
+        open={drawer !== null}
+        client={drawer === "new" ? null : drawer}
+        onClose={() => setDrawer(null)}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
+    </>
+  );
+}
+window.ClientsScreen = ClientsScreen;

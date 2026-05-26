@@ -1,0 +1,271 @@
+/* Snapspend — root app */
+const { useReducer, useState: useStateApp, useEffect: useEffectApp } = React;
+
+const NAV = [
+{ group: "Workspace", items: [
+  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  { id: "expenses", label: "Expenses", icon: "expense" },
+  { id: "invoices", label: "Invoices", icon: "invoice" },
+  { id: "paystubs", label: "Paystubs", icon: "paystub" }]
+},
+{ group: "People", items: [
+  { id: "employees", label: "Employees", icon: "employees" },
+  { id: "clients", label: "Business Clients", icon: "business" },
+  { id: "reports", label: "Reports", icon: "reports" }]
+},
+{ group: "Account", items: [
+  { id: "settings", label: "Settings", icon: "settings" }]
+}];
+
+
+const PAGE_META = {
+  dashboard: { kicker: "Overview", title: "Good afternoon, Aria." },
+  expenses: { kicker: "Ledger", title: "Expenses" },
+  invoices: { kicker: "Receivables", title: "Invoices" },
+  paystubs: { kicker: "Payroll", title: "Pay statements" },
+  employees: { kicker: "People", title: "Your team" },
+  clients: { kicker: "Registry", title: "Business clients" },
+  reports: { kicker: "Insights", title: "Reports" },
+  settings: { kicker: "Account", title: "Settings" }
+};
+
+const DEFAULT_USER_BUSINESS = {
+  name: "Snapspend",
+  owner: "Aria Whitfield",
+  email: "billing@snapspend.studio",
+  address: "118 Valencia Street, Suite 2\nSan Francisco, CA 94103",
+  country: "United States",
+  currency: "USD ($)",
+  terms: "Net 30",
+  taxRate: 0.0875,
+  fy: "January",
+  invoiceFooter: "Thank you for the work. Wire & ACH details on the second page of this PDF."
+};
+
+function reducer(state, action) {
+  switch (action.type) {
+    case "ADD_EXPENSE":
+      return { ...state, expenses: [action.expense, ...state.expenses] };
+    case "ADD_INVOICE":
+      return { ...state, invoices: [action.invoice, ...state.invoices] };
+    case "UPDATE_INVOICE":
+      return { ...state, invoices: state.invoices.map((i) => i.id === action.invoice.id ? action.invoice : i) };
+    case "ADD_PAYSTUB":
+      return { ...state, paystubs: [action.stub, ...state.paystubs] };
+    case "ADD_EMPLOYEE":
+      return { ...state, employees: [...state.employees, action.employee] };
+    case "UPDATE_EMPLOYEE":
+      return { ...state, employees: state.employees.map((e) => e.id === action.employee.id ? action.employee : e) };
+    case "REMOVE_EMPLOYEE":
+      return { ...state, employees: state.employees.filter((e) => e.id !== action.id) };
+    case "ADD_CLIENT":
+      return { ...state, clients: [...state.clients, action.client] };
+    case "UPDATE_CLIENT":
+      return { ...state, clients: state.clients.map((c) => c.id === action.client.id ? action.client : c) };
+    case "REMOVE_CLIENT":
+      return { ...state, clients: state.clients.filter((c) => c.id !== action.id) };
+    case "UPDATE_USER_BUSINESS":
+      return { ...state, userBusiness: { ...state.userBusiness, ...action.patch } };
+    default:
+      return state;
+  }
+}
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "direction": "broadsheet",
+  "accent": "#b8442a",
+  "showKickers": true
+} /*EDITMODE-END*/;
+
+const DIRECTION_MAP = {
+  broadsheet: "",
+  manuscript: "manuscript",
+  ledger: "ledger"
+};
+
+function SnapspendTweaks({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks · Snapspend">
+      <TweakSection label="Visual direction" />
+      <TweakRadio
+        label="Treatment"
+        value={tweaks.direction}
+        onChange={(v) => setTweak("direction", v)}
+        options={[
+        { value: "broadsheet", label: "Broadsheet" },
+        { value: "manuscript", label: "Manuscript" },
+        { value: "ledger", label: "Ledger" }]
+        } />
+      <p style={{ fontSize: 11, color: "#888", margin: "4px 0 6px", lineHeight: 1.5, paddingLeft: 2 }}>
+        <b>Broadsheet</b> — cream paper, copper accent, financial-journal feel.<br />
+        <b>Manuscript</b> — warmer sepia, italic display, romantic.<br />
+        <b>Ledger</b> — off-white, data-first, mono numerals up front.
+      </p>
+
+      <TweakSection label="Accent color" />
+      <TweakColor
+        label="Accent"
+        value={tweaks.accent}
+        onChange={(v) => setTweak("accent", v)}
+        options={["#b8442a", "#1a1a1a", "#2f5a3e", "#6e1f1f"]} />
+
+      <TweakSection label="Page chrome" />
+      <TweakToggle
+        label="Show kickers"
+        value={tweaks.showKickers}
+        onChange={(v) => setTweak("showKickers", v)} />
+    </TweaksPanel>);
+
+}
+
+function Sidebar({ route, setRoute, userBusiness }) {
+  // The sidebar logo always shows the user's business name as the primary
+  // mark, with "Snapspend" tucked underneath. If the user hasn't customised
+  // the name (still says "Snapspend"), we collapse to a single wordmark to
+  // avoid an awkward "Snapspend / SNAPSPEND" repeat.
+  const name = userBusiness && userBusiness.name || "Snapspend";
+  const customised = name.trim().toLowerCase() !== "snapspend";
+
+  return (
+    <aside className="sidebar">
+      <div className={"wordmark " + (customised ? "stacked" : "")}>
+        {customised ?
+        <>
+            <span className="wm-primary" title={name} style={{ fontWeight: "400" }}>{name}</span>
+            <span className="dot"></span>
+            <span className="wm-sub">Snapspend</span>
+          </> :
+
+        <>
+            Snapspend<span className="dot"></span>
+          </>
+        }
+      </div>
+
+      {NAV.map((group) =>
+      <div className="nav-group" key={group.group}>
+          <div className="nav-label">{group.group}</div>
+          {group.items.map((it) =>
+        <button
+          key={it.id}
+          className={"nav-item " + (route === it.id ? "active" : "")}
+          onClick={() => setRoute(it.id)}>
+              <Icon name={it.icon} size={15} />
+              {it.label}
+            </button>
+        )}
+        </div>
+      )}
+
+      <div className="userchip">
+        <div className="avatar">A</div>
+        <div className="meta">
+          <b>{userBusiness && userBusiness.owner || "Aria Whitfield"}</b>
+          <span>{name}</span>
+        </div>
+      </div>
+    </aside>);
+
+}
+
+function App() {
+  const [state, dispatch] = useReducer(reducer, {
+    CATEGORIES: window.SEED.CATEGORIES,
+    expenses: window.SEED.expenses,
+    clients: window.SEED.clients,
+    invoices: window.SEED.invoices,
+    employees: window.SEED.employees,
+    paystubs: window.SEED.paystubs,
+    userBusiness: DEFAULT_USER_BUSINESS
+  });
+
+  const [route, setRoute] = useStateApp("dashboard");
+  const [params, setParams] = useStateApp({});
+  const [toastMsg, setToastMsg] = useStateApp(null);
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  const userBusiness = state.userBusiness;
+
+  // Backwards-compatible setter — SettingsScreen still uses business+setBusiness.
+  const setUserBusiness = (next) => {
+    const merged = typeof next === "function" ? next(userBusiness) : next;
+    dispatch({ type: "UPDATE_USER_BUSINESS", patch: merged });
+  };
+
+  useEffectApp(() => {
+    const html = document.documentElement;
+    const dir = DIRECTION_MAP[tweaks.direction] || "";
+    if (dir) html.setAttribute("data-direction", dir);else
+    html.removeAttribute("data-direction");
+    html.style.setProperty("--accent", tweaks.accent);
+    html.style.setProperty("--accent-soft", `color-mix(in oklch, ${tweaks.accent} 22%, var(--paper))`);
+  }, [tweaks.direction, tweaks.accent]);
+
+  const go = (r, p = {}) => {setRoute(r);setParams(p);};
+
+  const toast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2400);
+  };
+
+  const meta = PAGE_META[route];
+  const showKickers = tweaks.showKickers;
+
+  let screen = null;
+  if (route === "dashboard") screen = <Dashboard state={state} go={go} />;else
+  if (route === "expenses") screen = <Expenses state={state} dispatch={dispatch} toast={toast} />;else
+  if (route === "invoices") screen = <InvoicesScreen state={state} dispatch={dispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={dispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "employees") screen = <EmployeesScreen state={state} dispatch={dispatch} toast={toast} go={go} params={params} />;else
+  if (route === "clients") screen = <ClientsScreen state={state} dispatch={dispatch} toast={toast} go={go} params={params} />;else
+  if (route === "reports") screen = <ReportsScreen state={state} />;else
+  if (route === "settings") screen = <SettingsScreen business={userBusiness} setBusiness={setUserBusiness} toast={toast} />;
+
+  return (
+    <div className="app" data-screen-label={"App · " + meta.title}>
+      <Sidebar route={route} setRoute={(r) => go(r, {})} userBusiness={userBusiness} />
+      <main className="page">
+        <div className="page-head print-hide">
+          <div className="titles">
+            {showKickers && <span className="kicker">{meta.kicker}</span>}
+            <h1 className="page-title">{meta.title}</h1>
+          </div>
+          <div className="page-actions">
+            {route === "dashboard" &&
+            <>
+                <button className="btn" onClick={() => go("invoices", {})}>
+                  <Icon name="invoice" size={13} /> New invoice
+                </button>
+                <button className="btn primary" onClick={() => go("expenses", {})}>
+                  <Icon name="plus" size={13} /> Log expense
+                </button>
+              </>
+            }
+            {route === "clients" &&
+            <button className="btn ghost" onClick={() => go("invoices", {})}>
+                <Icon name="invoice" size={13} /> View invoices
+              </button>
+            }
+            {route !== "dashboard" && route !== "invoices" && route !== "paystubs" &&
+            route !== "settings" && route !== "employees" && route !== "clients" &&
+            <button className="btn"><Icon name="external" size={13} /> Export CSV</button>
+            }
+          </div>
+        </div>
+
+        {screen}
+      </main>
+
+      <SnapspendTweaks tweaks={tweaks} setTweak={setTweak} />
+
+      {toastMsg &&
+      <div className="toast">
+          <Icon name="check" size={14} />
+          {toastMsg}
+        </div>
+      }
+    </div>);
+
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
