@@ -177,13 +177,13 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
               Edit
             </button>
           </div>
-          <button className="btn" onClick={() => {
+          <button className="btn desktop-doc-actions" onClick={() => {
             setMode("preview");
             setTimeout(() => window.print(), 40);
           }}>
             <Icon name="print" size={13} /> Print
           </button>
-          <button className="btn primary" onClick={() => {
+          <button className="btn primary desktop-doc-actions" onClick={() => {
             setMode("preview");
             setTimeout(() => {
               window.print();
@@ -228,6 +228,23 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
         </div>
 
         <div className="doc-preview-col">
+          <div className="mobile-doc-actions">
+            <button className="btn" onClick={() => {
+              setMode("preview");
+              setTimeout(() => window.print(), 40);
+            }}>
+              <Icon name="print" size={13} /> Print
+            </button>
+            <button className="btn primary" onClick={() => {
+              setMode("preview");
+              setTimeout(() => {
+                window.print();
+                toast("Invoice exported as PDF");
+              }, 40);
+            }}>
+              <Icon name="download" size={13} /> Download PDF
+            </button>
+          </div>
           {mode === "edit" ?
           <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)" }}>
               <InvoiceEditor
@@ -700,10 +717,10 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
           </span>
         </div>
         <div className="right">
-          <button className="btn" onClick={() => window.print()}>
+          <button className="btn desktop-doc-actions" onClick={() => window.print()}>
             <Icon name="print" size={13} /> Print
           </button>
-          <button className="btn primary" onClick={() => {window.print();toast("Pay statement exported as PDF");}}>
+          <button className="btn primary desktop-doc-actions" onClick={() => {window.print();toast("Pay statement exported as PDF");}}>
             <Icon name="download" size={13} /> Download PDF
           </button>
         </div>
@@ -788,6 +805,14 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
         </div>
 
         <div className="doc-preview-col">
+          <div className="mobile-doc-actions">
+            <button className="btn" onClick={() => window.print()}>
+              <Icon name="print" size={13} /> Print
+            </button>
+            <button className="btn primary" onClick={() => {window.print();toast("Pay statement exported as PDF");}}>
+              <Icon name="download" size={13} /> Download PDF
+            </button>
+          </div>
           {generated || employeeStubs.length > 0 ?
           <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} /> :
 
