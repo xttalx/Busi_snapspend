@@ -4,6 +4,7 @@
 delete from expenses;
 delete from clients;
 delete from invoices;
+delete from bills;
 delete from employees;
 delete from paystubs;
 delete from business_profiles;

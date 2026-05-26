@@ -38,7 +38,7 @@ function lastMonthKeys(count, from = new Date()) {
 }
 
 function Dashboard({ state, go }) {
-  const { expenses, invoices, clients, paystubs } = state;
+  const { expenses, bills = [], invoices, clients, paystubs } = state;
 
   const now = new Date();
   const monthKey = monthKeyFromDate(now);
@@ -51,7 +51,11 @@ function Dashboard({ state, go }) {
     .filter(i => i.status === "paid" && i.date.startsWith(k))
     .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
 
-  const expensesIn = (k) => expenses.filter(e => e.date.startsWith(k)).reduce((s, e) => s + e.amount, 0);
+  const expensesIn = (k) => {
+    const direct = expenses.filter((e) => (e.date || "").startsWith(k)).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const billsAsExpense = bills.filter((b) => (b.issueDate || "").startsWith(k)).reduce((s, b) => s + Number(b.amount || 0), 0);
+    return direct + billsAsExpense;
+  };
   const wagesIn = (k) => paystubs.filter(p => p.issued && p.issued.startsWith(k)).reduce((s, p) => s + p.gross, 0);
 
   const monthRevenue = revenue(monthKey);
@@ -74,6 +78,9 @@ function Dashboard({ state, go }) {
   const expSpark = sparkKeys.map(expensesIn);
   const wageSpark = sparkKeys.map(wagesIn);
   const paidThisMonth = invoices.filter(i => i.status === "paid" && i.date.startsWith(monthKey)).length;
+  const expenseEntriesThisMonth =
+  expenses.filter((e) => (e.date || "").startsWith(monthKey)).length +
+  bills.filter((b) => (b.issueDate || "").startsWith(monthKey)).length;
 
   const outstanding = invoices.filter(i => i.status === "due" || i.status === "overdue")
     .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
@@ -134,7 +141,7 @@ function Dashboard({ state, go }) {
           <div className="cashflow-term minus" onClick={() => go("expenses", {})}>
             <div className="cashflow-lbl">Expenses</div>
             <div className="cashflow-num">${fmt(monthExpense)}</div>
-            <div className="cashflow-sub">{expenses.filter(e => e.date.startsWith(monthKey)).length} entries logged</div>
+            <div className="cashflow-sub">{expenseEntriesThisMonth} entries logged (expenses + bills)</div>
           </div>
           <div className="cashflow-op">−</div>
           <div className="cashflow-term minus" onClick={() => go("paystubs", {})}>

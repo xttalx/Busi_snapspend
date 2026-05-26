@@ -246,6 +246,327 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
 }
 window.InvoicesScreen = InvoicesScreen;
 
+/* ---------- Bills ---------- */
+function readAmountFromText(rawText) {
+  if (!rawText) return null;
+  const text = String(rawText).replace(/\s+/g, " ");
+  const hints = [
+  /(?:amount due|total due|invoice total|total|balance due)[^\d]{0,20}(\d[\d,]*(?:\.\d{1,2})?)/i,
+  /(?:usd|cad|aud|eur|gbp|inr|\$)\s*([0-9][\d,]*(?:\.\d{1,2})?)/i];
+  for (const rx of hints) {
+    const m = text.match(rx);
+    if (m && m[1]) {
+      const n = Number(m[1].replace(/,/g, ""));
+      if (!Number.isNaN(n) && n > 0) return n;
+    }
+  }
+  const all = [...text.matchAll(/\b(\d[\d,]*\.\d{2})\b/g)].
+  map((m) => Number(m[1].replace(/,/g, ""))).
+  filter((n) => !Number.isNaN(n) && n > 0);
+  if (!all.length) return null;
+  return Math.max(...all);
+}
+
+function amountFromFilename(name) {
+  if (!name) return null;
+  const nums = [...String(name).matchAll(/(\d[\d,]*\.\d{2})/g)].
+  map((m) => Number(m[1].replace(/,/g, ""))).
+  filter((n) => !Number.isNaN(n) && n > 0);
+  return nums.length ? nums[nums.length - 1] : null;
+}
+
+function BillAttachmentLink({ attachment }) {
+  const [href, setHref] = useState2(attachment?.dataUrl || "");
+  React.useEffect(() => {
+    let active = true;
+    if (attachment?.dataUrl) {
+      setHref(attachment.dataUrl);
+      return () => {
+        active = false;
+      };
+    }
+    if (attachment?.storagePath && window.SnapAPI?.isEnabled()) {
+      window.SnapAPI.getReceiptUrl(attachment.storagePath).
+      then((url) => {
+        if (active) setHref(url);
+      }).
+      catch(() => {
+        if (active) setHref("");
+      });
+    } else {
+      setHref("");
+    }
+    return () => {
+      active = false;
+    };
+  }, [attachment?.dataUrl, attachment?.storagePath]);
+
+  if (!href) return <span className="help">Uploaded file is not available right now.</span>;
+  return (
+    <a className="btn sm" href={href} target="_blank" rel="noreferrer">
+      <Icon name="external" size={12} /> Open uploaded bill
+    </a>);
+}
+
+function BillsScreen({ state, dispatch, toast, userId, params }) {
+  const [drawer, setDrawer] = useState2(false);
+  const [selected, setSelected] = useState2(null);
+  const [readingAmount, setReadingAmount] = useState2(false);
+  const [readMsg, setReadMsg] = useState2("");
+  const today = new Date().toISOString().slice(0, 10);
+
+  const blank = {
+    vendor: "",
+    number: "",
+    issueDate: today,
+    dueDate: today,
+    status: "received",
+    amount: "",
+    notes: "",
+    attachment: null,
+  };
+  const [form, setForm] = useState2(blank);
+
+  const bills = [...(state.bills || [])].sort((a, b) => (b.issueDate || "").localeCompare(a.issueDate || ""));
+  const active = bills.find((b) => b.id === selected) || bills[0] || null;
+
+  React.useEffect(() => {
+    if (params?.focusId) setSelected(params.focusId);
+  }, [params?.focusId]);
+
+  const reset = () => {
+    setForm(blank);
+    setReadMsg("");
+    setReadingAmount(false);
+  };
+
+  const openNew = () => {
+    reset();
+    setDrawer(true);
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result;
+      setForm((f) => ({
+        ...f,
+        attachment: {
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          size: file.size,
+          dataUrl,
+        },
+      }));
+
+      setReadingAmount(true);
+      setReadMsg("Reading amount from file...");
+      let detected = null;
+      try {
+        if (file.type.startsWith("text/") || /\.txt$/i.test(file.name) || file.type === "application/pdf") {
+          const textReader = new FileReader();
+          const text = await new Promise((resolve) => {
+            textReader.onload = () => resolve(String(textReader.result || ""));
+            textReader.onerror = () => resolve("");
+            textReader.readAsText(file);
+          });
+          detected = readAmountFromText(text);
+        }
+      } catch (_e) {
+      }
+      if (!detected) detected = amountFromFilename(file.name);
+
+      if (detected) {
+        setForm((f) => ({ ...f, amount: detected.toFixed(2) }));
+        setReadMsg(`Detected amount: ${fmtMoney(detected)}. You can still edit it.`);
+      } else {
+        setReadMsg("Could not auto-detect amount. Please enter amount manually.");
+      }
+      setReadingAmount(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveBill = () => {
+    const amount = Number(form.amount);
+    if (!form.vendor.trim() || !amount || amount <= 0) {
+      toast("Vendor and amount are required");
+      return;
+    }
+    const bill = {
+      id: "b" + Date.now(),
+      vendor: form.vendor.trim(),
+      number: form.number.trim(),
+      issueDate: form.issueDate,
+      dueDate: form.dueDate,
+      status: form.status,
+      amount,
+      notes: form.notes,
+      attachment: form.attachment,
+      createdAt: new Date().toISOString(),
+      statusHistory: [],
+    };
+    dispatch({ type: "ADD_BILL", bill });
+    if (userId && window.SnapAPI?.isEnabled() && bill.attachment?.dataUrl) {
+      window.SnapAPI.saveBill(userId, bill).
+      then((saved) => dispatch({ type: "UPDATE_BILL", bill: saved })).
+      catch((err) => console.error("Bill attachment upload failed:", err));
+    }
+    setSelected(bill.id);
+    setDrawer(false);
+    toast(`Bill added: ${fmtMoney(amount)} from ${bill.vendor}`);
+  };
+
+  const updateStatus = (bill, next) => {
+    const prev = bill.status || "received";
+    const patched = prev === next ? bill : {
+      ...bill,
+      status: next,
+      statusHistory: [...(bill.statusHistory || []), { from: prev, to: next, at: new Date().toISOString() }],
+    };
+    dispatch({ type: "UPDATE_BILL", bill: patched });
+    toast(`${bill.vendor} bill -> ${next}`);
+  };
+
+  return (
+    <>
+      <div className="toolbar">
+        <div className="left">
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            {bills.length} bills · {fmtMoney(bills.reduce((s, b) => s + Number(b.amount || 0), 0))} total
+          </span>
+        </div>
+        <div className="right">
+          <button className="btn primary" onClick={openNew}>
+            <Icon name="plus" size={13} /> New bill
+          </button>
+        </div>
+      </div>
+
+      {bills.length === 0 &&
+      <div className="empty">
+          No bills yet. Upload vendor invoices here; they are treated as expenses and reduce net revenue.
+        </div>}
+
+      {bills.length > 0 &&
+      <div className="two-col">
+          <div className="list-card">
+            {bills.map((b) =>
+            <div key={b.id} className={"row " + (active?.id === b.id ? "active" : "")} onClick={() => setSelected(b.id)}>
+                <span className="name">{b.vendor}</span>
+                <span className="amount">{fmtMoney(Number(b.amount || 0))}</span>
+                <span className="meta">{b.number || "No bill #"} · {fmtDate(b.issueDate)}</span>
+                <select
+                className={"status status-select " + (b.status === "paid" ? "paid" : b.status === "overdue" ? "overdue" : "due")}
+                value={b.status}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => updateStatus(b, e.target.value)}>
+                  <option value="received">Received</option>
+                  <option value="approved">Approved</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="doc-shell">
+              <div className="head-block">
+                <div>
+                  <div className="doc-kicker">Bill preview</div>
+                  <h1 className="doc-title">{active.vendor}</h1>
+                </div>
+                <div className="doc-num">{active.number || "No bill #"}</div>
+              </div>
+              <div className="body-block">
+                <div className="summary-grid">
+                  <div className="cell"><div className="lbl">Issue date</div><div className="val">{fmtDate(active.issueDate)}</div></div>
+                  <div className="cell"><div className="lbl">Due date</div><div className="val">{fmtDate(active.dueDate)}</div></div>
+                  <div className="cell"><div className="lbl">Amount</div><div className="val">{fmtMoney(Number(active.amount || 0))}</div></div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <span className={"status " + (active.status === "paid" ? "paid" : active.status === "overdue" ? "overdue" : "due")}>{active.status}</span>
+                </div>
+                {active.notes && <div className="footnote">{active.notes}</div>}
+                {active.attachment && (
+                  <div style={{ marginTop: 16 }}>
+                    <BillAttachmentLink attachment={active.attachment} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>}
+
+      {drawer &&
+      <>
+          <div className="drawer-scrim" onClick={() => setDrawer(false)}></div>
+          <div className="drawer">
+            <div className="head">
+              <div>
+                <div className="kicker">New payable</div>
+                <h3>Add vendor bill</h3>
+              </div>
+              <button className="iconbtn" onClick={() => setDrawer(false)} aria-label="Close"><Icon name="close" /></button>
+            </div>
+            <div className="body">
+              <div className="field">
+                <label>Upload bill file</label>
+                <input className="input" type="file" accept="image/*,application/pdf,text/plain"
+                  onChange={(e) => handleFile(e.target.files && e.target.files[0])} />
+                <span className="help">We attempt to read amount from the uploaded file. If detection fails, enter amount manually.</span>
+                {(readMsg || readingAmount) && <span className="help">{readMsg}</span>}
+              </div>
+
+              <div className="field">
+                <label>Vendor / business</label>
+                <input className="input" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="Vendor name" />
+              </div>
+              <div className="row-2">
+                <div className="field">
+                  <label>Bill number</label>
+                  <input className="input mono" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} placeholder="INV-1234" />
+                </div>
+                <div className="field">
+                  <label>Amount</label>
+                  <input className="input mono" type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+                </div>
+              </div>
+              <div className="row-2">
+                <div className="field">
+                  <label>Issue date</label>
+                  <input className="input mono" type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>Due date</label>
+                  <input className="input mono" type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+                </div>
+              </div>
+              <div className="field">
+                <label>Status</label>
+                <select className="select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                  <option value="received">Received</option>
+                  <option value="approved">Approved</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Notes</label>
+                <textarea className="textarea" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              </div>
+            </div>
+            <div className="foot">
+              <button className="btn ghost" onClick={() => setDrawer(false)}>Cancel</button>
+              <button className="btn primary" onClick={saveBill}><Icon name="check" size={13} /> Save bill</button>
+            </div>
+          </div>
+        </>}
+    </>);
+}
+window.BillsScreen = BillsScreen;
+
 /* ---------- Paystubs ---------- */
 function PaystubsScreen({ state, dispatch, business, toast, params }) {
   if (!state.employees.length) {
@@ -837,10 +1158,30 @@ function TransactionHistoryScreen({ state, go }) {
       };
     });
 
-    return [...invoiceCreated, ...invoiceStatusChanges, ...paystubCreated].
+    const billCreated = (state.bills || []).map((bill) => ({
+      id: `bill-created-${bill.id}`,
+      at: bill.createdAt || (bill.issueDate ? `${bill.issueDate}T00:00:00.000Z` : null),
+      type: "bill_created",
+      label: `Bill added${bill.vendor ? ` from ${bill.vendor}` : ""}`,
+      detail: `${fmtMoney(Number(bill.amount || 0))} · ${(bill.status || "received").toUpperCase()}`,
+      route: { id: "bills", params: { focusId: bill.id } },
+    }));
+
+    const billStatusChanges = (state.bills || []).flatMap((bill) =>
+      (bill.statusHistory || []).map((h, idx) => ({
+        id: `bill-status-${bill.id}-${idx}`,
+        at: h.at,
+        type: "bill_status",
+        label: `${bill.vendor || "Bill"} status changed`,
+        detail: `${(h.from || "received").toUpperCase()} -> ${(h.to || bill.status || "received").toUpperCase()}`,
+        route: { id: "bills", params: { focusId: bill.id } },
+      }))
+    );
+
+    return [...invoiceCreated, ...invoiceStatusChanges, ...paystubCreated, ...billCreated, ...billStatusChanges].
     filter((x) => !!x.at).
     sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [state.invoices, state.paystubs, state.employees]);
+  }, [state.invoices, state.paystubs, state.employees, state.bills]);
 
   return (
     <>
@@ -854,7 +1195,7 @@ function TransactionHistoryScreen({ state, go }) {
 
       {items.length === 0 &&
       <div className="empty">
-          No events yet. Create invoices or pay statements to see transaction history.
+          No events yet. Create invoices, bills, or pay statements to see transaction history.
         </div>}
 
       {items.length > 0 &&
@@ -888,25 +1229,38 @@ window.TransactionHistoryScreen = TransactionHistoryScreen;
 
 /* ---------- Reports ---------- */
 function ReportsScreen({ state }) {
+  const billCategory = { id: "bills", name: "Bills", color: "#6e1f1f" };
+  const expenseRows = [
+  ...state.expenses,
+  ...(state.bills || []).map((b) => ({
+    id: b.id,
+    category: "bills",
+    amount: Number(b.amount || 0),
+    date: b.issueDate || b.createdAt?.slice(0, 10) || "",
+  }))];
+
   const byCategory = useMemo2(() => {
     const m = {};
-    state.expenses.forEach((e) => {m[e.category] = (m[e.category] || 0) + e.amount;});
-    return state.CATEGORIES.map((c) => ({ ...c, value: m[c.id] || 0 })).sort((a, b) => b.value - a.value);
-  }, [state.expenses]);
+    expenseRows.forEach((e) => {m[e.category] = (m[e.category] || 0) + Number(e.amount || 0);});
+    const withBills = [...state.CATEGORIES, billCategory];
+    return withBills.map((c) => ({ ...c, value: m[c.id] || 0 })).sort((a, b) => b.value - a.value);
+  }, [expenseRows, state.CATEGORIES]);
 
   const maxCat = Math.max(...byCategory.map((c) => c.value), 1);
-  const totalSpend = byCategory.reduce((s, c) => s + c.value, 0);
 
   const byMonth = useMemo2(() => {
-    const months = ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"];
-    const synthetic = { "2025-12": 1840, "2026-01": 2120, "2026-02": 1740, "2026-03": 2480, "2026-04": 2310 };
-    const m = { ...synthetic };
-    state.expenses.forEach((e) => {
-      const k = e.date.slice(0, 7);
-      m[k] = (m[k] || 0) + e.amount;
+    const m = {};
+    const now = new Date();
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    });
+    expenseRows.forEach((e) => {
+      const k = (e.date || "").slice(0, 7);
+      if (k) m[k] = (m[k] || 0) + Number(e.amount || 0);
     });
     return months.map((k) => ({ k, v: m[k] || 0 }));
-  }, [state.expenses]);
+  }, [expenseRows]);
 
   const maxMonth = Math.max(...byMonth.map((m) => m.v), 1);
 

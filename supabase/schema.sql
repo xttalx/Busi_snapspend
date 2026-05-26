@@ -29,6 +29,13 @@ create table if not exists invoices (
   created_at timestamptz not null default now()
 );
 
+create table if not exists bills (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  data jsonb not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists employees (
   id text primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -47,6 +54,7 @@ alter table business_profiles enable row level security;
 alter table expenses enable row level security;
 alter table clients enable row level security;
 alter table invoices enable row level security;
+alter table bills enable row level security;
 alter table employees enable row level security;
 alter table paystubs enable row level security;
 
@@ -60,6 +68,9 @@ create policy "clients_own" on clients
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "invoices_own" on invoices
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "bills_own" on bills
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "employees_own" on employees

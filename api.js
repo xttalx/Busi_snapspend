@@ -94,6 +94,18 @@
     return payload;
   }
 
+  async function saveBill(userId, bill) {
+    let payload = { ...bill };
+    if (payload.attachment?.dataUrl) {
+      payload = {
+        ...payload,
+        attachment: await uploadReceipt(userId, `bill-${bill.id}`, payload.attachment),
+      };
+    }
+    await upsertEntity("bills", userId, payload);
+    return payload;
+  }
+
   async function ensureBusinessProfile(userId, profileResult) {
     if (profileResult.data?.profile) return profileResult.data.profile;
     await sb().from("business_profiles").upsert({
@@ -103,9 +115,22 @@
     return DEFAULT_USER_BUSINESS;
   }
 
+  async function fetchTableSafe(table, userId) {
+    try {
+      return await fetchTable(table, userId);
+    } catch (error) {
+      if (table === "bills") {
+        console.warn("Bills table not found yet; run updated schema.sql migration.");
+        return [];
+      }
+      throw error;
+    }
+  }
+
   async function fetchAllData(userId) {
-    const [expenses, clients, invoices, employees, paystubs, profileResult] = await Promise.all([
+    const [expenses, bills, clients, invoices, employees, paystubs, profileResult] = await Promise.all([
       fetchTable("expenses", userId),
+      fetchTableSafe("bills", userId),
       fetchTable("clients", userId),
       fetchTable("invoices", userId),
       fetchTable("employees", userId),
@@ -117,6 +142,7 @@
 
     return {
       expenses,
+      bills,
       clients,
       invoices,
       employees,
@@ -136,6 +162,13 @@
       case "ADD_INVOICE":
       case "UPDATE_INVOICE":
         await upsertEntity("invoices", userId, action.invoice);
+        break;
+      case "ADD_BILL":
+      case "UPDATE_BILL":
+        await saveBill(userId, action.bill);
+        break;
+      case "REMOVE_BILL":
+        await deleteEntity("bills", action.id);
         break;
       case "ADD_PAYSTUB":
         await upsertEntity("paystubs", userId, action.stub);
@@ -217,6 +250,7 @@
     signOut,
     fetchAllData,
     saveExpense,
+    saveBill,
     getReceiptUrl,
     createPersistDispatch,
   };
