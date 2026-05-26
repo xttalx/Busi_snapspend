@@ -232,6 +232,11 @@ body {
 .userchip .meta { font-size: 12.5px; line-height: 1.2; }
 .userchip .meta b { font-weight: 500; display: block; }
 .userchip .meta span { color: var(--ink-3); font-size: 11px; }
+.sidebar-signout {
+  margin-top: 8px;
+  justify-content: flex-start;
+  width: 100%;
+}
 
 /* ---------- Page chrome ---------- */
 .page {
@@ -1513,6 +1518,9 @@ body {
   .app { display: block; }
   .page { padding: 0; max-width: none; }
   .doc-shell { border: none; box-shadow: none; }
+  .doc-controls-col { display: none !important; }
+  .doc-two-col { display: block !important; }
+  .doc-preview-col { display: block !important; width: 100% !important; }
 }
 
 /* Hide spinner */
@@ -1606,5 +1614,4 @@ input[type="number"] { -moz-appearance: textfield; }
 
 .auth-loading .auth-lead { margin-bottom: 0; text-align: center; }
 
-.auth-signout { opacity: 0.55; }
-.auth-signout:hover { opacity: 1; }
+.tx-history .btn { padding-left: 8px; padding-right: 8px; }

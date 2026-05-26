@@ -14,7 +14,8 @@ const NAV = [
   { id: "reports", label: "Reports", icon: "reports" }]
 },
 { group: "Account", items: [
-  { id: "settings", label: "Settings", icon: "settings" }]
+  { id: "settings", label: "Settings", icon: "settings" },
+  { id: "transactions", label: "Transaction History", icon: "calendar" }]
 }];
 
 
@@ -26,7 +27,8 @@ const PAGE_META = {
   employees: { kicker: "People", title: "Your team" },
   clients: { kicker: "Registry", title: "Business clients" },
   reports: { kicker: "Insights", title: "Reports" },
-  settings: { kicker: "Account", title: "Settings" }
+  settings: { kicker: "Account", title: "Settings" },
+  transactions: { kicker: "Account", title: "Transaction history" }
 };
 
 const DEFAULT_USER_BUSINESS = {
@@ -189,11 +191,11 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
           <b>{userBusiness?.owner || userBusiness?.name || "Account"}</b>
           <span>{session?.user?.email || name}</span>
         </div>
-        {onSignOut &&
-        <button className="iconbtn auth-signout" onClick={onSignOut} title="Sign out" aria-label="Sign out">
-          <Icon name="external" size={14} />
-        </button>}
       </div>
+      {onSignOut &&
+      <button className="btn ghost sidebar-signout" onClick={onSignOut}>
+          <Icon name="external" size={13} /> Sign out
+        </button>}
     </aside>);
 
 }
@@ -315,7 +317,8 @@ function App() {
   if (route === "employees") screen = <EmployeesScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "clients") screen = <ClientsScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "reports") screen = <ReportsScreen state={state} />;else
-  if (route === "settings") screen = <SettingsScreen business={userBusiness} setBusiness={setUserBusiness} toast={toast} />;
+  if (route === "settings") screen = <SettingsScreen business={userBusiness} setBusiness={setUserBusiness} toast={toast} />;else
+  if (route === "transactions") screen = <TransactionHistoryScreen state={state} go={go} />;
 
   return (
     <div className="app" data-screen-label={"App · " + meta.title}>

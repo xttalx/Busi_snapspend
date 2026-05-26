@@ -92,6 +92,21 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
 
   const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
   const client = inv ? state.clients.find((c) => c.id === inv.clientId) : null;
+  const nowIso = () => new Date().toISOString();
+
+  const applyInvoicePatch = (currentInvoice, patchedInvoice) => {
+    const prevStatus = currentInvoice.status || "draft";
+    const nextStatus = patchedInvoice.status || "draft";
+    if (prevStatus === nextStatus) {
+      return { ...patchedInvoice, statusHistory: patchedInvoice.statusHistory || currentInvoice.statusHistory || [] };
+    }
+    return {
+      ...patchedInvoice,
+      statusHistory: [
+      ...(currentInvoice.statusHistory || []),
+      { from: prevStatus, to: nextStatus, at: nowIso() }],
+    };
+  };
 
   const createNew = () => {
     if (!state.clients.length) {
@@ -110,7 +125,9 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
       status: "draft",
       items: [{ desc: "New line item", sub: "", qty: 1, rate: 0 }],
       taxRate: 0,
-      notes: ""
+      notes: "",
+      createdAt: nowIso(),
+      statusHistory: [],
     };
     dispatch({ type: "ADD_INVOICE", invoice: newInv });
     setSelected(newInv.id);
@@ -160,10 +177,19 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
               Edit
             </button>
           </div>
-          <button className="btn" onClick={() => window.print()}>
+          <button className="btn" onClick={() => {
+            setMode("preview");
+            setTimeout(() => window.print(), 40);
+          }}>
             <Icon name="print" size={13} /> Print
           </button>
-          <button className="btn primary" onClick={() => {window.print();toast("Invoice exported as PDF");}}>
+          <button className="btn primary" onClick={() => {
+            setMode("preview");
+            setTimeout(() => {
+              window.print();
+              toast("Invoice exported as PDF");
+            }, 40);
+          }}>
             <Icon name="download" size={13} /> Download PDF
           </button>
           <button className="btn primary" onClick={createNew} style={{ marginLeft: 6 }}>
@@ -172,8 +198,8 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
         </div>
       </div>
 
-      <div className="two-col" style={{ fontFamily: "Arial" }}>
-        <div className="list-card">
+      <div className="two-col doc-two-col" style={{ fontFamily: "Arial" }}>
+        <div className="list-card doc-controls-col">
           {state.invoices.map((i) => {
             const c = state.clients.find((cl) => cl.id === i.clientId);
             const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
@@ -188,7 +214,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => {
                     const next = e.target.value;
-                    dispatch({ type: "UPDATE_INVOICE", invoice: { ...i, status: next } });
+                    dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(i, { ...i, status: next }) });
                     toast(`${i.number} → ${next.charAt(0).toUpperCase() + next.slice(1)}`);
                   }}>
                   <option value="draft">Draft</option>
@@ -201,13 +227,13 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
           })}
         </div>
 
-        <div>
+        <div className="doc-preview-col">
           {mode === "edit" ?
           <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)" }}>
               <InvoiceEditor
               invoice={inv}
               clients={state.clients}
-              onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: patched })} />
+              onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, patched) })} />
             
             </div> :
 
@@ -304,7 +330,8 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
       hours: emp.payType === "Hourly" ? hours : null,
       earnings,
       taxes,
-      deductions
+      deductions,
+      createdAt: new Date().toISOString(),
     };
     dispatch({ type: "ADD_PAYSTUB", stub: newStub });
     setStub(newStub);
@@ -338,8 +365,8 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
         </div>
       </div>
 
-      <div className="two-col">
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="two-col doc-two-col">
+        <div className="doc-controls-col" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 22, background: "var(--paper)" }}>
             <div className="kicker" style={{ marginBottom: 12 }}>Generate statement</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -398,7 +425,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
           }
         </div>
 
-        <div>
+        <div className="doc-preview-col">
           {generated || employeeStubs.length > 0 ?
           <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} /> :
 
@@ -774,6 +801,90 @@ function EmployeesScreen({ state, dispatch, toast, go, params }) {
 
 }
 window.EmployeesScreen = EmployeesScreen;
+
+/* ---------- Transaction history ---------- */
+function TransactionHistoryScreen({ state, go }) {
+  const items = useMemo2(() => {
+    const invoiceCreated = state.invoices.map((inv) => ({
+      id: `inv-created-${inv.id}`,
+      at: inv.createdAt || (inv.date ? `${inv.date}T00:00:00.000Z` : null),
+      type: "invoice_created",
+      label: `${inv.number || "Invoice"} created`,
+      detail: `Status: ${(inv.status || "draft").toUpperCase()}`,
+      route: { id: "invoices", params: { focusId: inv.id } },
+    }));
+
+    const invoiceStatusChanges = state.invoices.flatMap((inv) =>
+      (inv.statusHistory || []).map((h, idx) => ({
+        id: `inv-status-${inv.id}-${idx}`,
+        at: h.at,
+        type: "invoice_status",
+        label: `${inv.number || "Invoice"} status changed`,
+        detail: `${(h.from || "draft").toUpperCase()} -> ${(h.to || inv.status || "draft").toUpperCase()}`,
+        route: { id: "invoices", params: { focusId: inv.id } },
+      }))
+    );
+
+    const paystubCreated = state.paystubs.map((stub) => {
+      const emp = state.employees.find((e) => e.id === stub.employeeId);
+      return {
+        id: `paystub-created-${stub.id}`,
+        at: stub.createdAt || (stub.issued ? `${stub.issued}T00:00:00.000Z` : null),
+        type: "paystub_created",
+        label: `Pay statement created${emp ? ` for ${emp.name}` : ""}`,
+        detail: `${stub.periodStart || "?"} -> ${stub.periodEnd || "?"}`,
+        route: { id: "paystubs", params: { employeeId: stub.employeeId } },
+      };
+    });
+
+    return [...invoiceCreated, ...invoiceStatusChanges, ...paystubCreated].
+    filter((x) => !!x.at).
+    sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [state.invoices, state.paystubs, state.employees]);
+
+  return (
+    <>
+      <div className="toolbar">
+        <div className="left">
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            {items.length} events
+          </span>
+        </div>
+      </div>
+
+      {items.length === 0 &&
+      <div className="empty">
+          No events yet. Create invoices or pay statements to see transaction history.
+        </div>}
+
+      {items.length > 0 &&
+      <table className="tbl tx-history">
+          <thead>
+            <tr>
+              <th style={{ width: 140 }}>Date</th>
+              <th>Event</th>
+              <th style={{ width: 220 }}>Details</th>
+              <th style={{ width: 120 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) =>
+            <tr key={it.id}>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{new Date(it.at).toLocaleDateString()}</span></td>
+                <td>{it.label}</td>
+                <td style={{ color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: 11 }}>{it.detail}</td>
+                <td style={{ textAlign: "right" }}>
+                  <button className="btn sm ghost" onClick={() => go(it.route.id, it.route.params)}>
+                    Open <Icon name="chev_r" size={12} />
+                  </button>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>}
+    </>);
+}
+window.TransactionHistoryScreen = TransactionHistoryScreen;
 
 /* ---------- Reports ---------- */
 function ReportsScreen({ state }) {

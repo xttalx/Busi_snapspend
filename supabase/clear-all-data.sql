@@ -8,5 +8,7 @@ delete from employees;
 delete from paystubs;
 delete from business_profiles;
 
--- Optional: clear all receipt files
-delete from storage.objects where bucket_id = 'receipts';
+-- Receipt files cannot be deleted via SQL (Supabase blocks direct storage table writes).
+-- To clear receipts instead:
+--   Dashboard → Storage → receipts → select all → Delete
+-- Or leave them — orphaned files do not show in the app after rows above are deleted.
