@@ -592,6 +592,8 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const [start, setStart] = useState2(fifteenAgo.toISOString().slice(0, 10));
   const [end, setEnd] = useState2(today.toISOString().slice(0, 10));
   const [hours, setHours] = useState2(80);
+  const [overtimeHours, setOvertimeHours] = useState2(0);
+  const [commissionPct, setCommissionPct] = useState2(0);
   const [issued, setIssued] = useState2(today.toISOString().slice(0, 10));
   const [stub, setStub] = useState2(state.paystubs[0]);
   const [generated, setGenerated] = useState2(false);
@@ -604,6 +606,11 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const emp = state.employees.find((e) => e.id === employeeId) || state.employees[0];
 
   React.useEffect(() => {
+    setOvertimeHours(0);
+    setCommissionPct(0);
+  }, [employeeId, emp.payType]);
+
+  React.useEffect(() => {
     if (params?.employeeId && params.employeeId !== employeeId) {
       setEmployeeId(params.employeeId);
       setGenerated(false);
@@ -613,11 +620,25 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   // Compute gross + earnings from current form state.
   const computeGross = () => {
     if (emp.payType === "Hourly") {
-      const g = +(emp.payRate * hours).toFixed(2);
-      return { gross: g, earnings: [{ k: `Regular hours · ${hours} @ $${emp.payRate}`, v: g }] };
+      const regular = +(emp.payRate * hours).toFixed(2);
+      const overtimeRate = +(emp.payRate * 1.5).toFixed(2);
+      const overtime = +(overtimeRate * (Number(overtimeHours) || 0)).toFixed(2);
+      const gross = +(regular + overtime).toFixed(2);
+      const earnings = [
+      { k: `Regular hours · ${hours} @ $${emp.payRate}`, v: regular }];
+      if (overtimeHours > 0) {
+        earnings.push({ k: `Overtime · ${overtimeHours} @ $${overtimeRate}`, v: overtime });
+      }
+      return { gross, earnings };
     }
-    const g = +(emp.payRate / 24).toFixed(2);
-    return { gross: g, earnings: [{ k: "Regular salary (semi-monthly)", v: g }] };
+    const base = +(emp.payRate / 24).toFixed(2);
+    const commission = +(base * ((Number(commissionPct) || 0) / 100)).toFixed(2);
+    const gross = +(base + commission).toFixed(2);
+    const earnings = [{ k: "Regular salary (semi-monthly)", v: base }];
+    if (commissionPct > 0) {
+      earnings.push({ k: `Commission (${commissionPct}%)`, v: commission });
+    }
+    return { gross, earnings };
   };
 
   // STEP 1: open the confirmation modal preloaded with the employee's
@@ -649,6 +670,8 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
       issued,
       gross,
       hours: emp.payType === "Hourly" ? hours : null,
+      overtimeHours: emp.payType === "Hourly" ? Number(overtimeHours) || 0 : null,
+      commissionPct: emp.payType === "Salary" ? Number(commissionPct) || 0 : null,
       earnings,
       taxes,
       deductions,
@@ -713,7 +736,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
                   <input className="input mono" type="date" value={issued} onChange={(e) => setIssued(e.target.value)} />
                 </div>
                 <div className="field">
-                  <label>{emp.payType === "Hourly" ? "Hours worked" : "Pay basis"}</label>
+                  <label>{emp.payType === "Hourly" ? "Regular hours" : "Pay basis"}</label>
                   {emp.payType === "Hourly" ?
                   <input className="input mono" type="number" value={hours} onChange={(e) => setHours(Number(e.target.value))} /> :
 
@@ -721,6 +744,24 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
                   }
                 </div>
               </div>
+              {emp.payType === "Hourly" ?
+              <div className="field">
+                  <label>Overtime hours (1.5x hourly wage)</label>
+                  <input className="input mono" type="number" min="0" step="0.25" value={overtimeHours}
+                  onChange={(e) => setOvertimeHours(Number(e.target.value) || 0)} />
+                  <span className="help">
+                    Overtime rate is fixed at {fmtMoney(emp.payRate * 1.5)} per hour.
+                  </span>
+                </div> :
+              <div className="field">
+                  <label>Commission (%)</label>
+                  <input className="input mono" type="number" min="0" step="0.01" value={commissionPct}
+                  onChange={(e) => setCommissionPct(Number(e.target.value) || 0)} />
+                  <span className="help">
+                    Commission is added on top of the semi-monthly salary amount.
+                  </span>
+                </div>
+              }
               <button className="btn primary" onClick={openConfirm} style={{ alignSelf: "flex-start" }}>
                 <Icon name="sparkles" size={13} /> Generate statement
               </button>
