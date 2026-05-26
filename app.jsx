@@ -119,6 +119,25 @@ const DIRECTION_MAP = {
   ledger: "ledger"
 };
 
+function toCsvCell(value) {
+  const s = String(value ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, "\"\"")}"`;
+  return s;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = "\uFEFF" + rows.map((row) => row.map(toCsvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function SnapspendTweaks({ tweaks, setTweak }) {
   return (
     <TweaksPanel title="Tweaks · Snapspend">
@@ -310,6 +329,57 @@ function App() {
     setTimeout(() => setToastMsg(null), 2400);
   };
 
+  const exportExpensesCsv = () => {
+    const paidBills = (state.bills || [])
+      .filter((b) => (b.status || "").toLowerCase() === "paid")
+      .map((b) => ({
+        date: (b.paidDate || b.issueDate || "").slice(0, 10),
+        vendor: b.vendor || "",
+        note: b.number ? `Bill ${b.number}` : "Bill payment",
+        category: "Bills",
+        method: "Bill paid",
+        amount: Number(b.amount || 0),
+        source: "bill",
+        status: b.status || "paid",
+      }));
+
+    const expenses = (state.expenses || []).map((e) => {
+      const cat = (state.CATEGORIES || []).find((c) => c.id === e.category);
+      return {
+        date: (e.date || "").slice(0, 10),
+        vendor: e.vendor || "",
+        note: e.note || "",
+        category: cat ? cat.name : e.category || "",
+        method: e.method || "",
+        amount: Number(e.amount || 0),
+        source: "expense",
+        status: "",
+      };
+    });
+
+    const rowsData = [...expenses, ...paidBills].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const rows = [
+    ["Date", "Vendor", "Note", "Category", "Method", "Amount", "Source", "Status"],
+    ...rowsData.map((r) => [
+      r.date,
+      r.vendor,
+      r.note,
+      r.category,
+      r.method,
+      r.amount.toFixed(2),
+      r.source,
+      r.status])];
+
+    if (rowsData.length === 0) {
+      toast("No expenses to export yet");
+      return;
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`expense-ledger-${stamp}.csv`, rows);
+    toast(`Exported ${rowsData.length} ledger rows to CSV`);
+  };
+
   const meta = PAGE_META[route];
   const showKickers = tweaks.showKickers;
 
@@ -362,8 +432,13 @@ function App() {
                 <Icon name="invoice" size={13} /> View invoices
               </button>
             }
+            {route === "expenses" &&
+            <button className="btn" onClick={exportExpensesCsv}>
+                <Icon name="external" size={13} /> Export CSV
+              </button>
+            }
             {route !== "dashboard" && route !== "invoices" && route !== "paystubs" &&
-            route !== "settings" && route !== "employees" && route !== "clients" && route !== "bills" &&
+            route !== "settings" && route !== "employees" && route !== "clients" && route !== "bills" && route !== "expenses" &&
             <button className="btn"><Icon name="external" size={13} /> Export CSV</button>
             }
           </div>
