@@ -224,11 +224,32 @@ window.Dashboard = Dashboard;
 function ReceiptViewer({ expense, onClose }) {
   const r = expense.receipt;
   const isImage = r.type && r.type.startsWith("image/");
+  const [viewUrl, setViewUrl] = React.useState(r.dataUrl || null);
+  const [loadingUrl, setLoadingUrl] = React.useState(!r.dataUrl && !!r.storagePath);
+
+  React.useEffect(() => {
+    let active = true;
+    if (r.dataUrl) {
+      setViewUrl(r.dataUrl);
+      setLoadingUrl(false);
+      return;
+    }
+    if (r.storagePath && window.SnapAPI?.isEnabled()) {
+      setLoadingUrl(true);
+      window.SnapAPI.getReceiptUrl(r.storagePath)
+        .then((url) => { if (active) setViewUrl(url); })
+        .catch(() => { if (active) setViewUrl(null); })
+        .finally(() => { if (active) setLoadingUrl(false); });
+    }
+    return () => { active = false; };
+  }, [r.dataUrl, r.storagePath]);
+
   React.useEffect(() => {
     const onEsc = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [onClose]);
+
   return (
     <div className="receipt-viewer-scrim" onClick={onClose}>
       <div className="receipt-viewer" onClick={(e) => e.stopPropagation()}>
@@ -240,20 +261,24 @@ function ReceiptViewer({ expense, onClose }) {
             </span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <a className="btn sm" href={r.dataUrl} target="_blank" rel="noopener noreferrer" download={r.name}>
+            {viewUrl &&
+            <a className="btn sm" href={viewUrl} target="_blank" rel="noopener noreferrer" download={r.name}>
               <Icon name="download" size={12} /> Download
-            </a>
+            </a>}
             <button className="iconbtn" onClick={onClose} aria-label="Close">
               <Icon name="close" />
             </button>
           </div>
         </header>
         <div className="stage">
-          {isImage ? (
-            <img src={r.dataUrl} alt={r.name} />
-          ) : (
-            <iframe src={r.dataUrl} title={r.name}></iframe>
+          {loadingUrl && <div className="empty">Loading receipt…</div>}
+          {!loadingUrl && viewUrl && isImage && (
+            <img src={viewUrl} alt={r.name} />
           )}
+          {!loadingUrl && viewUrl && !isImage && (
+            <iframe src={viewUrl} title={r.name}></iframe>
+          )}
+          {!loadingUrl && !viewUrl && <div className="empty">Could not load receipt.</div>}
         </div>
       </div>
     </div>
@@ -539,7 +564,8 @@ function Expenses({ state, dispatch, toast }) {
         onClose={() => setDrawer(false)}
         categories={state.CATEGORIES}
         onSave={(form) => {
-          dispatch({ type: "ADD_EXPENSE", expense: { id: "e" + Date.now(), ...form } });
+          const expense = { id: "e" + Date.now(), ...form, amount: Number(form.amount) };
+          dispatch({ type: "ADD_EXPENSE", expense });
           setDrawer(false);
           toast(`Logged ${fmtMoney(form.amount)} at ${form.vendor}`);
         }}

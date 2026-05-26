@@ -208,7 +208,8 @@ body {
 
 .userchip {
   margin-top: auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
   padding: 8px;
@@ -1518,3 +1519,92 @@ body {
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
+
+/* Auth screen */
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--paper);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: 32px 28px;
+  box-shadow: var(--shadow-pop);
+}
+
+.auth-brand {
+  font-family: var(--serif);
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.auth-lead {
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+.auth-form .field { margin-bottom: 14px; }
+
+.auth-submit {
+  width: 100%;
+  margin-top: 8px;
+  justify-content: center;
+}
+
+.auth-error {
+  background: color-mix(in oklch, var(--accent) 12%, var(--paper));
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, var(--rule));
+  color: var(--accent);
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  margin-bottom: 8px;
+}
+
+.auth-message {
+  background: var(--positive-soft);
+  color: var(--positive);
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  margin-bottom: 8px;
+}
+
+.auth-switch {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.auth-demo {
+  width: 100%;
+  margin-top: 16px;
+  justify-content: center;
+}
+
+.auth-loading .auth-lead { margin-bottom: 0; text-align: center; }
+
+.auth-signout { opacity: 0.55; }
+.auth-signout:hover { opacity: 1; }

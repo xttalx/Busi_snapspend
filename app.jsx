@@ -44,8 +44,23 @@ const DEFAULT_USER_BUSINESS = {
 
 function reducer(state, action) {
   switch (action.type) {
+    case "HYDRATE":
+      return {
+        ...state,
+        expenses: action.payload.expenses,
+        clients: action.payload.clients,
+        invoices: action.payload.invoices,
+        employees: action.payload.employees,
+        paystubs: action.payload.paystubs,
+        userBusiness: action.payload.userBusiness,
+      };
     case "ADD_EXPENSE":
       return { ...state, expenses: [action.expense, ...state.expenses] };
+    case "UPDATE_EXPENSE":
+      return {
+        ...state,
+        expenses: state.expenses.map((e) => (e.id === action.expense.id ? action.expense : e)),
+      };
     case "ADD_INVOICE":
       return { ...state, invoices: [action.invoice, ...state.invoices] };
     case "UPDATE_INVOICE":
@@ -118,7 +133,7 @@ function SnapspendTweaks({ tweaks, setTweak }) {
 
 }
 
-function Sidebar({ route, setRoute, userBusiness }) {
+function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
   // The sidebar logo always shows the user's business name as the primary
   // mark, with "Snapspend" tucked underneath. If the user hasn't customised
   // the name (still says "Snapspend"), we collapse to a single wordmark to
@@ -158,14 +173,31 @@ function Sidebar({ route, setRoute, userBusiness }) {
       )}
 
       <div className="userchip">
-        <div className="avatar">A</div>
+        <div className="avatar">
+          {(session?.user?.email || userBusiness?.owner || "A").charAt(0).toUpperCase()}
+        </div>
         <div className="meta">
           <b>{userBusiness && userBusiness.owner || "Aria Whitfield"}</b>
-          <span>{name}</span>
+          <span>{session?.user?.email || name}</span>
         </div>
+        {onSignOut &&
+        <button className="iconbtn auth-signout" onClick={onSignOut} title="Sign out" aria-label="Sign out">
+          <Icon name="external" size={14} />
+        </button>}
       </div>
     </aside>);
 
+}
+
+function AppLoading({ label }) {
+  return (
+    <div className="auth-screen">
+      <div className="auth-card auth-loading">
+        <div className="auth-brand">Snapspend<span className="dot"></span></div>
+        <p className="auth-lead">{label || "Loading…"}</p>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -179,6 +211,23 @@ function App() {
     userBusiness: DEFAULT_USER_BUSINESS
   });
 
+  const supabaseEnabled = window.SnapAPI && window.SnapAPI.isEnabled();
+  const [session, setSession] = useStateApp(null);
+  const [authLoading, setAuthLoading] = useStateApp(supabaseEnabled);
+  const [dataLoading, setDataLoading] = useStateApp(false);
+  const [demoMode, setDemoMode] = useStateApp(false);
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+
+  const userId = session?.user?.id;
+  const persistDispatch = React.useMemo(
+    () =>
+      supabaseEnabled && userId && !demoMode
+        ? window.SnapAPI.createPersistDispatch(dispatch, () => stateRef.current, userId)
+        : dispatch,
+    [supabaseEnabled, userId, demoMode]
+  );
+
   const [route, setRoute] = useStateApp("dashboard");
   const [params, setParams] = useStateApp({});
   const [toastMsg, setToastMsg] = useStateApp(null);
@@ -186,10 +235,59 @@ function App() {
 
   const userBusiness = state.userBusiness;
 
+  useEffectApp(() => {
+    if (!supabaseEnabled) return;
+    let active = true;
+    window.SnapAPI.getSession().then(({ session: s }) => {
+      if (active) {
+        setSession(s);
+        setAuthLoading(false);
+      }
+    });
+    const { data: { subscription } } = window.SnapAPI.onAuthStateChange((s) => {
+      if (active) setSession(s);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [supabaseEnabled]);
+
+  useEffectApp(() => {
+    if (!supabaseEnabled || !userId || demoMode) return;
+    let active = true;
+    setDataLoading(true);
+    window.SnapAPI.fetchAllData(userId)
+      .then((data) => {
+        if (active) dispatch({ type: "HYDRATE", payload: data });
+      })
+      .catch((err) => console.error("Failed to load data:", err))
+      .finally(() => {
+        if (active) setDataLoading(false);
+      });
+    return () => { active = false; };
+  }, [supabaseEnabled, userId, demoMode]);
+
+  const handleSignOut = async () => {
+    await window.SnapAPI.signOut();
+    setDemoMode(false);
+    dispatch({
+      type: "HYDRATE",
+      payload: {
+        expenses: window.SEED.expenses,
+        clients: window.SEED.clients,
+        invoices: window.SEED.invoices,
+        employees: window.SEED.employees,
+        paystubs: window.SEED.paystubs,
+        userBusiness: DEFAULT_USER_BUSINESS,
+      },
+    });
+  };
+
   // Backwards-compatible setter — SettingsScreen still uses business+setBusiness.
   const setUserBusiness = (next) => {
     const merged = typeof next === "function" ? next(userBusiness) : next;
-    dispatch({ type: "UPDATE_USER_BUSINESS", patch: merged });
+    persistDispatch({ type: "UPDATE_USER_BUSINESS", patch: merged });
   };
 
   useEffectApp(() => {
@@ -211,19 +309,31 @@ function App() {
   const meta = PAGE_META[route];
   const showKickers = tweaks.showKickers;
 
+  if (supabaseEnabled && authLoading) return <AppLoading label="Checking session…" />;
+  if (supabaseEnabled && !session && !demoMode) {
+    return <AuthScreen onDemo={() => setDemoMode(true)} />;
+  }
+  if (supabaseEnabled && dataLoading && !demoMode) return <AppLoading label="Loading your workspace…" />;
+
   let screen = null;
   if (route === "dashboard") screen = <Dashboard state={state} go={go} />;else
-  if (route === "expenses") screen = <Expenses state={state} dispatch={dispatch} toast={toast} />;else
-  if (route === "invoices") screen = <InvoicesScreen state={state} dispatch={dispatch} business={userBusiness} toast={toast} params={params} />;else
-  if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={dispatch} business={userBusiness} toast={toast} params={params} />;else
-  if (route === "employees") screen = <EmployeesScreen state={state} dispatch={dispatch} toast={toast} go={go} params={params} />;else
-  if (route === "clients") screen = <ClientsScreen state={state} dispatch={dispatch} toast={toast} go={go} params={params} />;else
+  if (route === "expenses") screen = <Expenses state={state} dispatch={persistDispatch} toast={toast} />;else
+  if (route === "invoices") screen = <InvoicesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "employees") screen = <EmployeesScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
+  if (route === "clients") screen = <ClientsScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "reports") screen = <ReportsScreen state={state} />;else
   if (route === "settings") screen = <SettingsScreen business={userBusiness} setBusiness={setUserBusiness} toast={toast} />;
 
   return (
     <div className="app" data-screen-label={"App · " + meta.title}>
-      <Sidebar route={route} setRoute={(r) => go(r, {})} userBusiness={userBusiness} />
+      <Sidebar
+        route={route}
+        setRoute={(r) => go(r, {})}
+        userBusiness={userBusiness}
+        session={session}
+        onSignOut={supabaseEnabled && session && !demoMode ? handleSignOut : null}
+      />
       <main className="page">
         <div className="page-head print-hide">
           <div className="titles">
