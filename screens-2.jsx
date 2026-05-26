@@ -87,14 +87,18 @@ function InvoiceEditor({ invoice, clients, onChange }) {
 }
 
 function InvoicesScreen({ state, dispatch, business, toast, params }) {
-  const [selected, setSelected] = useState2(params?.focusId || state.invoices[0] && state.invoices[0].id);
+  const [selected, setSelected] = useState2(params?.focusId || null);
   const [mode, setMode] = useState2("preview"); // edit | preview
 
   const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
-  const client = state.clients.find((c) => c.id === inv.clientId);
+  const client = inv ? state.clients.find((c) => c.id === inv.clientId) : null;
 
   const createNew = () => {
-    const num = "INV-" + String(144 + state.invoices.filter((i) => i.number.startsWith("INV-")).length).padStart(4, "0");
+    if (!state.clients.length) {
+      toast("Add a client before creating an invoice.");
+      return;
+    }
+    const num = "INV-" + String(1 + state.invoices.filter((i) => i.number.startsWith("INV-")).length).padStart(4, "0");
     const today = new Date();
     const due = new Date(today.getTime() + 30 * 86400000);
     const newInv = {
@@ -112,6 +116,28 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
     setSelected(newInv.id);
     setMode("edit");
   };
+
+  if (!state.invoices.length) {
+    return (
+      <>
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              0 invoices
+            </span>
+          </div>
+          <div className="right">
+            <button className="btn primary" onClick={createNew}>
+              <Icon name="plus" size={13} /> New invoice
+            </button>
+          </div>
+        </div>
+        <div className="empty" style={{ marginTop: 24 }}>
+          No invoices yet. Add a client under Business Clients, then create your first invoice.
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -153,7 +179,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
             const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
             return (
               <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
-                <span className="name" style={{ fontFamily: "Arial" }}>{c.name}</span>
+                <span className="name" style={{ fontFamily: "Arial" }}>{c?.name || "Unknown client"}</span>
                 <span className="amount">{fmtMoney(total)}</span>
                 <span className="meta">{i.number} · {fmtDate(i.date)}</span>
                 <select
@@ -196,6 +222,23 @@ window.InvoicesScreen = InvoicesScreen;
 
 /* ---------- Paystubs ---------- */
 function PaystubsScreen({ state, dispatch, business, toast, params }) {
+  if (!state.employees.length) {
+    return (
+      <>
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              0 statements on file
+            </span>
+          </div>
+        </div>
+        <div className="empty" style={{ marginTop: 24 }}>
+          No employees yet. Add someone under Employees before generating pay statements.
+        </div>
+      </>
+    );
+  }
+
   const today = new Date();
   const fifteenAgo = new Date(today.getTime() - 15 * 86400000);
   const [employeeId, setEmployeeId] = useState2(params?.employeeId || state.employees[0].id);
@@ -993,7 +1036,7 @@ function ClientDrawer({ open, client, onClose, onSave, onDelete }) {
           <div className="field">
             <label>Client name</label>
             <input className="input" autoFocus value={form.name}
-              placeholder="e.g. Northstar Labs"
+              placeholder="e.g. Client name"
               onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div className="row-2">

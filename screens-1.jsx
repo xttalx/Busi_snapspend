@@ -19,40 +19,61 @@ function Sparkline({ values, color = "currentColor", height = 38 }) {
   );
 }
 
+function monthKeyFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function pctChange(current, previous) {
+  if (!previous) return current ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+}
+
+function lastMonthKeys(count, from = new Date()) {
+  const keys = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(from.getFullYear(), from.getMonth() - i, 1);
+    keys.push(monthKeyFromDate(d));
+  }
+  return keys;
+}
+
 function Dashboard({ state, go }) {
   const { expenses, invoices, clients, paystubs } = state;
 
-  const monthKey = "2026-05";
-  const prevKey  = "2026-04";
+  const now = new Date();
+  const monthKey = monthKeyFromDate(now);
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevKey = monthKeyFromDate(prevDate);
+  const monthLabel = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const prevMonthLabel = prevDate.toLocaleDateString("en-US", { month: "long" });
 
-  // Revenue = invoices marked paid, dated this month
   const revenue = (k) => invoices
     .filter(i => i.status === "paid" && i.date.startsWith(k))
     .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
 
   const expensesIn = (k) => expenses.filter(e => e.date.startsWith(k)).reduce((s, e) => s + e.amount, 0);
-  const wagesIn    = (k) => paystubs.filter(p => p.issued && p.issued.startsWith(k)).reduce((s, p) => s + p.gross, 0);
+  const wagesIn = (k) => paystubs.filter(p => p.issued && p.issued.startsWith(k)).reduce((s, p) => s + p.gross, 0);
 
-  // Inject some prior-month receivables so the dashboard has signal even
-  // before the user records anything. Synthesized monthly history.
-  const REV_HIST = { "2025-12": 4200, "2026-01": 6800, "2026-02": 5400, "2026-03": 9100, "2026-04": 7600 };
-  const EXP_HIST = { "2025-12": 1840, "2026-01": 2120, "2026-02": 1740, "2026-03": 2480, "2026-04": 2310 };
-  const WAGE_HIST= { "2025-12": 3833, "2026-01": 5953, "2026-02": 5953, "2026-03": 6073, "2026-04": 6073 };
-
-  const monthRevenue = revenue(monthKey) + (REV_HIST[monthKey] || 0);
+  const monthRevenue = revenue(monthKey);
   const monthExpense = expensesIn(monthKey);
-  const monthWages   = wagesIn(monthKey) + (WAGE_HIST[monthKey] || 0);
-  const monthNet     = monthRevenue - monthExpense - monthWages;
+  const monthWages = wagesIn(monthKey);
+  const monthNet = monthRevenue - monthExpense - monthWages;
 
-  const prevRevenue = revenue(prevKey) + (REV_HIST[prevKey] || 0) || 1;
-  const prevExpense = expensesIn(prevKey) + (EXP_HIST[prevKey] || 0) || 1;
-  const prevWages   = wagesIn(prevKey) + (WAGE_HIST[prevKey] || 0) || 1;
-  const prevNet     = prevRevenue - prevExpense - prevWages;
+  const prevRevenue = revenue(prevKey);
+  const prevExpense = expensesIn(prevKey);
+  const prevWages = wagesIn(prevKey);
+  const prevNet = prevRevenue - prevExpense - prevWages;
 
-  const dRev   = ((monthRevenue - prevRevenue) / prevRevenue) * 100;
-  const dExp   = ((monthExpense - prevExpense) / prevExpense) * 100;
-  const dWages = ((monthWages   - prevWages)   / prevWages)   * 100;
-  const dNet   = prevNet === 0 ? 0 : ((monthNet - prevNet) / Math.abs(prevNet)) * 100;
+  const dRev = pctChange(monthRevenue, prevRevenue);
+  const dExp = pctChange(monthExpense, prevExpense);
+  const dWages = pctChange(monthWages, prevWages);
+  const dNet = pctChange(monthNet, prevNet);
+
+  const sparkKeys = lastMonthKeys(12, now);
+  const revSpark = sparkKeys.map(revenue);
+  const expSpark = sparkKeys.map(expensesIn);
+  const wageSpark = sparkKeys.map(wagesIn);
+  const paidThisMonth = invoices.filter(i => i.status === "paid" && i.date.startsWith(monthKey)).length;
 
   const outstanding = invoices.filter(i => i.status === "due" || i.status === "overdue")
     .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
@@ -67,38 +88,38 @@ function Dashboard({ state, go }) {
     <>
       <div className="kpis">
         <div className="kpi">
-          <div className="kicker">May revenue · invoices paid</div>
+          <div className="kicker">{monthLabel} revenue · invoices paid</div>
           <div className="value"><span className="sym">$</span>{fmt(monthRevenue)}</div>
           <div className={"delta " + (dRev >= 0 ? "up" : "down")}>
             <Icon name={dRev >= 0 ? "arrow_up" : "arrow_down"} size={11} />
-            {Math.abs(dRev).toFixed(1)}% vs. April
+            {Math.abs(dRev).toFixed(1)}% vs. {prevMonthLabel}
           </div>
-          <Sparkline values={[3200, 4100, 4800, 5400, 6200, 6800, 5400, 7900, 9100, 7600, monthRevenue/1.05, monthRevenue]} color="var(--positive)" />
+          <Sparkline values={revSpark.length ? revSpark : [0]} color="var(--positive)" />
         </div>
         <div className="kpi">
-          <div className="kicker">May expenses · operating</div>
+          <div className="kicker">{monthLabel} expenses · operating</div>
           <div className="value"><span className="sym">$</span>{fmt(monthExpense)}</div>
           <div className={"delta " + (dExp <= 0 ? "up" : "down")}>
             <Icon name={dExp <= 0 ? "arrow_down" : "arrow_up"} size={11} />
-            {Math.abs(dExp).toFixed(1)}% vs. April
+            {Math.abs(dExp).toFixed(1)}% vs. {prevMonthLabel}
           </div>
-          <Sparkline values={[1420, 1180, 1640, 1290, 1880, 1520, 2110, 1780, 1450, 2240, 1920, monthExpense]} color="var(--accent)" />
+          <Sparkline values={expSpark.length ? expSpark : [0]} color="var(--accent)" />
         </div>
         <div className="kpi">
-          <div className="kicker">May wages · payroll</div>
+          <div className="kicker">{monthLabel} wages · payroll</div>
           <div className="value"><span className="sym">$</span>{fmt(monthWages)}</div>
           <div className={"delta " + (dWages <= 0 ? "up" : "down")}>
-            <Icon name={dWages === 0 ? "arrow_up" : (dWages < 0 ? "arrow_down" : "arrow_up")} size={11} />
-            {Math.abs(dWages).toFixed(1)}% vs. April
+            <Icon name={dWages <= 0 ? "arrow_down" : "arrow_up"} size={11} />
+            {Math.abs(dWages).toFixed(1)}% vs. {prevMonthLabel}
           </div>
-          <Sparkline values={[3833, 3833, 3833, 5953, 5953, 5953, 6073, 6073, 6073, 6073, 6073, monthWages]} color="var(--ink-2)" />
+          <Sparkline values={wageSpark.length ? wageSpark : [0]} color="var(--ink-2)" />
         </div>
       </div>
 
       {/* Cash flow breakdown — Revenue − Expenses − Wages = Net */}
       <div className="cashflow">
         <div className="cashflow-head">
-          <div className="kicker">Cash flow · May 2026</div>
+          <div className="kicker">Cash flow · {monthLabel}</div>
           <button className="btn ghost sm" onClick={() => go("reports", {})}>
             Open full report <Icon name="arrow" size={13} />
           </button>
@@ -107,7 +128,7 @@ function Dashboard({ state, go }) {
           <div className="cashflow-term plus">
             <div className="cashflow-lbl">Revenue</div>
             <div className="cashflow-num">${fmt(monthRevenue)}</div>
-            <div className="cashflow-sub">{invoices.filter(i => i.status === "paid" && i.date.startsWith(monthKey)).length + 1} invoices paid</div>
+            <div className="cashflow-sub">{paidThisMonth} {paidThisMonth === 1 ? "invoice" : "invoices"} paid</div>
           </div>
           <div className="cashflow-op">−</div>
           <div className="cashflow-term minus" onClick={() => go("expenses", {})}>
@@ -127,7 +148,7 @@ function Dashboard({ state, go }) {
             <div className="cashflow-num cashflow-net">${fmt(Math.abs(monthNet))}{monthNet < 0 && <span style={{ fontFamily: "var(--mono)", fontSize: 18, opacity: 0.6, marginLeft: 6 }}>(loss)</span>}</div>
             <div className={"cashflow-sub delta " + (dNet >= 0 ? "up" : "down")}>
               <Icon name={dNet >= 0 ? "arrow_up" : "arrow_down"} size={11} />
-              {Math.abs(dNet).toFixed(1)}% vs. April
+              {Math.abs(dNet).toFixed(1)}% vs. {prevMonthLabel}
             </div>
           </div>
         </div>
@@ -153,6 +174,11 @@ function Dashboard({ state, go }) {
             </tr>
           </thead>
           <tbody>
+            {recent.length === 0 && (
+              <tr>
+                <td colSpan="4"><div className="empty">No expenses yet. Log your first expense to see activity here.</div></td>
+              </tr>
+            )}
             {recent.map(e => {
               const cat = state.CATEGORIES.find(c => c.id === e.category);
               return (
@@ -181,6 +207,9 @@ function Dashboard({ state, go }) {
             gap: 14
           }}>
             <div className="kicker" style={{ fontSize: 10 }}>Open invoices</div>
+            {recentInvoices.length === 0 && (
+              <div className="empty" style={{ padding: "12px 0" }}>No invoices yet.</div>
+            )}
             {recentInvoices.map(inv => {
               const c = clients.find(cl => cl.id === inv.clientId);
               const total = inv.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (inv.taxRate || 0));
@@ -202,7 +231,7 @@ function Dashboard({ state, go }) {
                     fontFamily: "var(--sans)",
                     color: "var(--ink-2)",
                   }}>
-                  <span style={{ fontFamily: "var(--serif)", fontSize: 15, color: "var(--ink)" }}>{c.name}</span>
+                  <span style={{ fontFamily: "var(--serif)", fontSize: 15, color: "var(--ink)" }}>{c?.name || "Unknown client"}</span>
                   <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{fmtMoney(total)}</span>
                   <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{inv.number} · due {fmtDate(inv.due)}</span>
                   <span className={"status " + inv.status} style={{ justifySelf: "end" }}>{inv.status}</span>

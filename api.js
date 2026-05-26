@@ -1,16 +1,16 @@
 /* Supabase data layer — auth, CRUD, receipt uploads */
 (function () {
   const DEFAULT_USER_BUSINESS = {
-    name: "Snapspend",
-    owner: "Aria Whitfield",
-    email: "billing@snapspend.studio",
-    address: "118 Valencia Street, Suite 2\nSan Francisco, CA 94103",
+    name: "Your business",
+    owner: "",
+    email: "",
+    address: "",
     country: "United States",
     currency: "USD ($)",
     terms: "Net 30",
     taxRate: 0.0875,
     fy: "January",
-    invoiceFooter: "Thank you for the work. Wire & ACH details on the second page of this PDF.",
+    invoiceFooter: "",
   };
 
   function sb() {
@@ -94,33 +94,13 @@
     return payload;
   }
 
-  async function seedUserData(userId) {
-    const seed = window.SEED;
-    const rows = [
-      ...seed.expenses.map((e) => ({ table: "expenses", entity: e })),
-      ...seed.clients.map((c) => ({ table: "clients", entity: c })),
-      ...seed.invoices.map((i) => ({ table: "invoices", entity: i })),
-      ...seed.employees.map((e) => ({ table: "employees", entity: e })),
-      ...seed.paystubs.map((p) => ({ table: "paystubs", entity: p })),
-    ];
-
-    for (const { table, entity } of rows) {
-      await upsertEntity(table, userId, entity);
-    }
-
+  async function ensureBusinessProfile(userId, profileResult) {
+    if (profileResult.data?.profile) return profileResult.data.profile;
     await sb().from("business_profiles").upsert({
       user_id: userId,
       profile: DEFAULT_USER_BUSINESS,
     });
-
-    return {
-      expenses: seed.expenses,
-      clients: seed.clients,
-      invoices: seed.invoices,
-      employees: seed.employees,
-      paystubs: seed.paystubs,
-      userBusiness: DEFAULT_USER_BUSINESS,
-    };
+    return DEFAULT_USER_BUSINESS;
   }
 
   async function fetchAllData(userId) {
@@ -133,16 +113,7 @@
       sb().from("business_profiles").select("profile").eq("user_id", userId).maybeSingle(),
     ]);
 
-    const isEmpty =
-      expenses.length === 0 &&
-      clients.length === 0 &&
-      invoices.length === 0 &&
-      employees.length === 0 &&
-      paystubs.length === 0;
-
-    if (isEmpty) {
-      return seedUserData(userId);
-    }
+    const userBusiness = await ensureBusinessProfile(userId, profileResult);
 
     return {
       expenses,
@@ -150,7 +121,7 @@
       invoices,
       employees,
       paystubs,
-      userBusiness: profileResult.data?.profile || DEFAULT_USER_BUSINESS,
+      userBusiness,
     };
   }
 

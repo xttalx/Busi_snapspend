@@ -1,5 +1,5 @@
 /* Auth screen — shown when Supabase is configured and user is not signed in */
-function AuthScreen({ onDemo }) {
+function AuthScreen() {
   const [mode, setMode] = React.useState("signin");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -92,11 +92,6 @@ function AuthScreen({ onDemo }) {
           )}
         </div>
 
-        {onDemo && (
-          <button type="button" className="btn ghost auth-demo" onClick={onDemo}>
-            Continue in demo mode (no cloud sync)
-          </button>
-        )}
       </div>
     </div>
   );

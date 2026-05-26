@@ -19,7 +19,7 @@ const NAV = [
 
 
 const PAGE_META = {
-  dashboard: { kicker: "Overview", title: "Good afternoon, Aria." },
+  dashboard: { kicker: "Overview", title: "Dashboard" },
   expenses: { kicker: "Ledger", title: "Expenses" },
   invoices: { kicker: "Receivables", title: "Invoices" },
   paystubs: { kicker: "Payroll", title: "Pay statements" },
@@ -30,16 +30,25 @@ const PAGE_META = {
 };
 
 const DEFAULT_USER_BUSINESS = {
-  name: "Snapspend",
-  owner: "Aria Whitfield",
-  email: "billing@snapspend.studio",
-  address: "118 Valencia Street, Suite 2\nSan Francisco, CA 94103",
+  name: "Your business",
+  owner: "",
+  email: "",
+  address: "",
   country: "United States",
   currency: "USD ($)",
   terms: "Net 30",
   taxRate: 0.0875,
   fy: "January",
-  invoiceFooter: "Thank you for the work. Wire & ACH details on the second page of this PDF."
+  invoiceFooter: ""
+};
+
+const EMPTY_WORKSPACE = {
+  expenses: [],
+  clients: [],
+  invoices: [],
+  employees: [],
+  paystubs: [],
+  userBusiness: DEFAULT_USER_BUSINESS,
 };
 
 function reducer(state, action) {
@@ -177,7 +186,7 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
           {(session?.user?.email || userBusiness?.owner || "A").charAt(0).toUpperCase()}
         </div>
         <div className="meta">
-          <b>{userBusiness && userBusiness.owner || "Aria Whitfield"}</b>
+          <b>{userBusiness?.owner || userBusiness?.name || "Account"}</b>
           <span>{session?.user?.email || name}</span>
         </div>
         {onSignOut &&
@@ -203,29 +212,23 @@ function AppLoading({ label }) {
 function App() {
   const [state, dispatch] = useReducer(reducer, {
     CATEGORIES: window.SEED.CATEGORIES,
-    expenses: window.SEED.expenses,
-    clients: window.SEED.clients,
-    invoices: window.SEED.invoices,
-    employees: window.SEED.employees,
-    paystubs: window.SEED.paystubs,
-    userBusiness: DEFAULT_USER_BUSINESS
+    ...EMPTY_WORKSPACE,
   });
 
   const supabaseEnabled = window.SnapAPI && window.SnapAPI.isEnabled();
   const [session, setSession] = useStateApp(null);
   const [authLoading, setAuthLoading] = useStateApp(supabaseEnabled);
   const [dataLoading, setDataLoading] = useStateApp(false);
-  const [demoMode, setDemoMode] = useStateApp(false);
   const stateRef = React.useRef(state);
   stateRef.current = state;
 
   const userId = session?.user?.id;
   const persistDispatch = React.useMemo(
     () =>
-      supabaseEnabled && userId && !demoMode
+      supabaseEnabled && userId
         ? window.SnapAPI.createPersistDispatch(dispatch, () => stateRef.current, userId)
         : dispatch,
-    [supabaseEnabled, userId, demoMode]
+    [supabaseEnabled, userId]
   );
 
   const [route, setRoute] = useStateApp("dashboard");
@@ -254,7 +257,7 @@ function App() {
   }, [supabaseEnabled]);
 
   useEffectApp(() => {
-    if (!supabaseEnabled || !userId || demoMode) return;
+    if (!supabaseEnabled || !userId) return;
     let active = true;
     setDataLoading(true);
     window.SnapAPI.fetchAllData(userId)
@@ -266,22 +269,11 @@ function App() {
         if (active) setDataLoading(false);
       });
     return () => { active = false; };
-  }, [supabaseEnabled, userId, demoMode]);
+  }, [supabaseEnabled, userId]);
 
   const handleSignOut = async () => {
     await window.SnapAPI.signOut();
-    setDemoMode(false);
-    dispatch({
-      type: "HYDRATE",
-      payload: {
-        expenses: window.SEED.expenses,
-        clients: window.SEED.clients,
-        invoices: window.SEED.invoices,
-        employees: window.SEED.employees,
-        paystubs: window.SEED.paystubs,
-        userBusiness: DEFAULT_USER_BUSINESS,
-      },
-    });
+    dispatch({ type: "HYDRATE", payload: EMPTY_WORKSPACE });
   };
 
   // Backwards-compatible setter — SettingsScreen still uses business+setBusiness.
@@ -310,10 +302,10 @@ function App() {
   const showKickers = tweaks.showKickers;
 
   if (supabaseEnabled && authLoading) return <AppLoading label="Checking session…" />;
-  if (supabaseEnabled && !session && !demoMode) {
-    return <AuthScreen onDemo={() => setDemoMode(true)} />;
+  if (supabaseEnabled && !session) {
+    return <AuthScreen />;
   }
-  if (supabaseEnabled && dataLoading && !demoMode) return <AppLoading label="Loading your workspace…" />;
+  if (supabaseEnabled && dataLoading) return <AppLoading label="Loading your workspace…" />;
 
   let screen = null;
   if (route === "dashboard") screen = <Dashboard state={state} go={go} />;else
@@ -332,7 +324,7 @@ function App() {
         setRoute={(r) => go(r, {})}
         userBusiness={userBusiness}
         session={session}
-        onSignOut={supabaseEnabled && session && !demoMode ? handleSignOut : null}
+        onSignOut={supabaseEnabled && session ? handleSignOut : null}
       />
       <main className="page">
         <div className="page-head print-hide">
