@@ -1833,6 +1833,74 @@ input[type="number"] { -moz-appearance: textfield; }
   }
 }
 
+/* Phone / portrait mobile navigation treatment */
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    height: auto;
+    z-index: 80;
+    border-bottom: none;
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
+    padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .wordmark,
+  .userchip,
+  .nav-label {
+    display: none !important;
+  }
+
+  .nav-group {
+    display: contents;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+    font-size: 11px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    min-height: 34px;
+  }
+
+  .nav-item .glyph {
+    width: 14px;
+    height: 14px;
+  }
+
+  .sidebar-signout {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 8px);
+    right: calc(env(safe-area-inset-right) + 8px);
+    z-index: 90;
+    margin: 0;
+    width: auto;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    box-shadow: var(--shadow-sm);
+    padding: 7px 10px;
+  }
+
+  .page {
+    padding-bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+}
+
 @media (max-width: 640px) {
   .btn { padding: 8px 10px; font-size: 12px; }
   .btn.sm { padding: 5px 8px; font-size: 11px; }
@@ -1864,12 +1932,10 @@ input[type="number"] { -moz-appearance: textfield; }
   .doc-shell .paystub-grid { grid-template-columns: 1fr; }
   .doc-shell .totals .stack { width: 100%; }
 
-  .sidebar {
-    padding: 12px 10px 10px;
-    gap: 10px;
-  }
+  .sidebar { padding-left: max(6px, env(safe-area-inset-left)); padding-right: max(6px, env(safe-area-inset-right)); }
   .page {
     padding: 14px 10px 48px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
   .toast {
     width: calc(100vw - 20px);
