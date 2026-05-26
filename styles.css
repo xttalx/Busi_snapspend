@@ -257,6 +257,33 @@ body {
   border-bottom: 1px solid var(--rule);
 }
 .page-head .titles { display: flex; flex-direction: column; gap: 4px; }
+.dashboard-biz-title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dashboard-biz-title .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  transform: translateY(-2px);
+}
+.dashboard-biz-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
 .kicker {
   font-family: var(--mono);
   font-size: 10px;
@@ -1925,6 +1952,8 @@ input[type="number"] { -moz-appearance: textfield; }
   .btn { padding: 8px 10px; font-size: 12px; }
   .btn.sm { padding: 5px 8px; font-size: 11px; }
   .page-title { font-size: 24px; }
+  .dashboard-biz-title { font-size: 24px; }
+  .dashboard-biz-sub { font-size: 10px; }
   .kpi .value { font-size: 28px; }
   .kpi .value .sym { font-size: 17px; }
 

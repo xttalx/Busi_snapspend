@@ -396,6 +396,7 @@ function App() {
 
   const meta = PAGE_META[route];
   const showKickers = tweaks.showKickers;
+  const dashboardName = (userBusiness?.name || "Your business").trim() || "Your business";
 
   if (supabaseEnabled && authLoading) return <AppLoading label="Checking session…" />;
   if (supabaseEnabled && !session) {
@@ -427,8 +428,18 @@ function App() {
       <main className="page">
         <div className="page-head print-hide">
           <div className="titles">
-            {showKickers && <span className="kicker">{meta.kicker}</span>}
-            <h1 className="page-title">{meta.title}</h1>
+            {route === "dashboard" ?
+            <>
+                <h1 className="dashboard-biz-title">
+                  {dashboardName}<span className="dot"></span>
+                </h1>
+                <span className="dashboard-biz-sub">Overview dashboard</span>
+              </> :
+            <>
+                {showKickers && <span className="kicker">{meta.kicker}</span>}
+                <h1 className="page-title">{meta.title}</h1>
+              </>
+            }
           </div>
           <div className="page-actions">
             {route === "dashboard" &&
