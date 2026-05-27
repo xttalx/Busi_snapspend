@@ -89,6 +89,7 @@ function InvoiceEditor({ invoice, clients, onChange }) {
 function InvoicesScreen({ state, dispatch, business, toast, params }) {
   const [selected, setSelected] = useState2(params?.focusId || null);
   const [mode, setMode] = useState2("preview"); // edit | preview
+  const invoicePreviewRef = useRef(null);
 
   const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
   const client = inv ? state.clients.find((c) => c.id === inv.clientId) : null;
@@ -108,13 +109,17 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
     };
   };
 
-  const downloadCurrentInvoicePdf = () => {
+  const downloadCurrentInvoicePdf = async () => {
     if (!inv || !client) {
       toast("Select an invoice with a client first.");
       return;
     }
     try {
-      window.downloadInvoicePdf({ invoice: inv, client, business });
+      if (mode !== "preview") {
+        setMode("preview");
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      await window.downloadInvoicePdf({ invoice: inv, element: invoicePreviewRef.current });
       toast("Invoice PDF downloaded.");
     } catch (error) {
       toast("Could not download invoice PDF.");
@@ -239,7 +244,9 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
             
             </div> :
 
-          <InvoiceDocument invoice={inv} client={client} business={business} />
+          <div ref={invoicePreviewRef}>
+            <InvoiceDocument invoice={inv} client={client} business={business} />
+          </div>
           }
         </div>
       </div>
@@ -597,6 +604,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const [overtimeHours, setOvertimeHours] = useState2(0);
   const [commissionPct, setCommissionPct] = useState2(0);
   const [paystubMonth, setPaystubMonth] = useState2("");
+  const paystubPreviewRef = useRef(null);
   const [issued, setIssued] = useState2(today.toISOString().slice(0, 10));
   const [stub, setStub] = useState2(state.paystubs[0]);
   const [generated, setGenerated] = useState2(false);
@@ -700,7 +708,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const canDownloadStub = generated || employeeStubs.length > 0;
   const currentStub = canDownloadStub ? stub : null;
 
-  const downloadCurrentPaystubPdf = () => {
+  const downloadCurrentPaystubPdf = async () => {
     if (!currentStub) {
       toast("Generate or select a pay statement first.");
       return;
@@ -711,7 +719,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
       return;
     }
     try {
-      window.downloadPaystubPdf({ stub: currentStub, employee, business });
+      await window.downloadPaystubPdf({ stub: currentStub, element: paystubPreviewRef.current });
       toast("Pay statement PDF downloaded.");
     } catch (error) {
       toast("Could not download pay statement PDF.");
@@ -821,7 +829,9 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
 
         <div className="doc-preview-col">
           {generated || employeeStubs.length > 0 ?
-          <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} /> :
+          <div ref={paystubPreviewRef}>
+              <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} />
+            </div> :
 
           <div className="empty" style={{ padding: 60 }}>
               <div style={{ fontFamily: "var(--serif)", fontSize: 22, color: "var(--ink-2)", marginBottom: 6 }}>
