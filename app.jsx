@@ -357,7 +357,30 @@ function App() {
     return null;
   };
 
+  const imageUrlToDataUrl = async (url) => {
+    try {
+      if (!url) return null;
+      if (String(url).startsWith("data:image/")) return url;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch (_e) {
+      return null;
+    }
+  };
+
   const exportExpensesPdf = async () => {
+    if (!window.jspdf?.jsPDF) {
+      toast("PDF library not loaded. Refresh and try again.");
+      return;
+    }
+
     const paidBills = (state.bills || [])
       .filter((b) => (b.status || "").toLowerCase() === "paid")
       .map((b) => ({
@@ -395,87 +418,124 @@ function App() {
     }
 
     const rowsWithReceipts = await Promise.all(
-      rowsData.map(async (r) => ({ ...r, receiptResolved: await resolveReceiptForExport(r.receipt) }))
+      rowsData.map(async (r) => {
+        const receiptResolved = await resolveReceiptForExport(r.receipt);
+        const receiptImageData = receiptResolved?.isImage ? await imageUrlToDataUrl(receiptResolved.url) : null;
+        return { ...r, receiptResolved, receiptImageData };
+      })
     );
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "in",
+      format: [7, 11], // requested 7x11 export format
+      compress: true,
+    });
+
+    const pageW = 7;
+    const pageH = 11;
+    const margin = 0.35;
+    const contentW = pageW - margin * 2;
+    const receiptColW = 1.7;
+    const leftColW = contentW - receiptColW - 0.15;
+    let y = margin;
+
+    const drawHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("Expense Ledger", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Generated ${new Date().toLocaleString()}`, margin, y + 0.16);
+      y += 0.32;
+      doc.setLineWidth(0.01);
+      doc.line(margin, y, pageW - margin, y);
+      y += 0.08;
+    };
+
+    const ensureSpace = (needed) => {
+      if (y + needed <= pageH - margin) return;
+      doc.addPage([7, 11], "portrait");
+      y = margin;
+      drawHeader();
+    };
+
+    drawHeader();
+
+    rowsWithReceipts.forEach((r) => {
+      const note = r.note || "";
+      const meta = `${r.date || "—"}  •  ${r.category || "—"}  •  ${r.method || "—"}${r.status ? `  •  ${r.status}` : ""}`;
+      const header = `${r.vendor || "—"}  (${r.source || "expense"})`;
+      const amount = `$${Number(r.amount || 0).toFixed(2)}`;
+
+      doc.setFontSize(8.5);
+      const noteLines = doc.splitTextToSize(note, leftColW);
+      const textHeight = 0.14 * (2 + Math.max(1, noteLines.length));
+
+      let receiptHeight = 0.4;
+      let receiptWidth = 0;
+      if (r.receiptImageData) {
+        try {
+          const props = doc.getImageProperties(r.receiptImageData);
+          const ratio = props.width / props.height || 1;
+          receiptWidth = receiptColW;
+          receiptHeight = receiptWidth / ratio;
+          if (receiptHeight > 1.8) {
+            receiptHeight = 1.8;
+            receiptWidth = receiptHeight * ratio;
+          }
+        } catch (_e) {
+          receiptHeight = 0.4;
+          receiptWidth = 0;
+        }
+      } else if (r.receiptResolved) {
+        receiptHeight = 0.45;
+      }
+
+      const rowHeight = Math.max(0.8, textHeight + 0.12, receiptHeight + 0.15);
+      ensureSpace(rowHeight + 0.08);
+
+      doc.setLineWidth(0.005);
+      doc.line(margin, y + rowHeight, pageW - margin, y + rowHeight);
+
+      doc.setFont("helvetica", "bold");
+      doc.text(header, margin, y + 0.14);
+      doc.text(amount, margin + leftColW - 0.02, y + 0.14, { align: "right" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(meta, margin, y + 0.29);
+      doc.text(noteLines, margin, y + 0.43);
+
+      const rx = margin + leftColW + 0.15;
+      const ry = y + 0.05;
+      if (r.receiptImageData && receiptWidth > 0) {
+        try {
+          doc.addImage(r.receiptImageData, undefined, rx, ry, receiptWidth, receiptHeight, undefined, "FAST");
+        } catch (_e) {
+          doc.setFontSize(7.5);
+          doc.text("Receipt image failed to render", rx, ry + 0.16);
+        }
+      } else if (r.receiptResolved?.url) {
+        doc.setFontSize(7.5);
+        doc.textWithLink("Open receipt", rx, ry + 0.16, { url: r.receiptResolved.url });
+      } else {
+        doc.setFontSize(7.5);
+        doc.text("No receipt", rx, ry + 0.16);
+      }
+
+      y += rowHeight + 0.08;
+    });
 
     const total = rowsWithReceipts.reduce((s, r) => s + Number(r.amount || 0), 0);
     const stamp = new Date().toISOString().slice(0, 10);
-    const htmlRows = rowsWithReceipts.map((r) => {
-      const receiptCell = !r.receiptResolved ?
-      "—" :
-      r.receiptResolved.isImage ?
-      `<img src="${escapeHtml(r.receiptResolved.url)}" alt="${escapeHtml(r.receiptResolved.name)}" style="max-width:120px;max-height:90px;border:1px solid #ddd;border-radius:4px;display:block;" />` :
-      `<a href="${escapeHtml(r.receiptResolved.url)}" target="_blank" rel="noreferrer">${escapeHtml(r.receiptResolved.name || "Open receipt")}</a>`;
-
-      return `<tr>
-        <td>${escapeHtml(r.date)}</td>
-        <td>${escapeHtml(r.vendor)}</td>
-        <td>${escapeHtml(r.note)}</td>
-        <td>${escapeHtml(r.category)}</td>
-        <td>${escapeHtml(r.method)}</td>
-        <td style="text-align:right;">${Number(r.amount || 0).toFixed(2)}</td>
-        <td>${escapeHtml(r.source)}</td>
-        <td>${escapeHtml(r.status)}</td>
-        <td>${receiptCell}</td>
-      </tr>`;
-    }).join("");
-
-    const w = window.open("", "_blank");
-    if (!w) {
-      toast("Popup blocked. Please allow popups to export PDF.");
-      return;
-    }
-
-    w.document.write(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Expense Ledger ${escapeHtml(stamp)}</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
-    h1 { margin: 0 0 6px; font-size: 22px; }
-    .meta { margin: 0 0 14px; color: #555; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { background: #f4f4f4; text-align: left; }
-    tfoot td { font-weight: 700; }
-    @media print { body { margin: 10mm; } a { color: #111; text-decoration: none; } }
-  </style>
-</head>
-<body>
-  <h1>Expense Ledger</h1>
-  <p class="meta">Generated ${escapeHtml(new Date().toLocaleString())} · Rows: ${rowsWithReceipts.length}</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Vendor</th>
-        <th>Note</th>
-        <th>Category</th>
-        <th>Method</th>
-        <th>Amount</th>
-        <th>Source</th>
-        <th>Status</th>
-        <th>Receipt</th>
-      </tr>
-    </thead>
-    <tbody>${htmlRows}</tbody>
-    <tfoot>
-      <tr>
-        <td colspan="5">Total</td>
-        <td style="text-align:right;">${total.toFixed(2)}</td>
-        <td colspan="3"></td>
-      </tr>
-    </tfoot>
-  </table>
-</body>
-</html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => {
-      w.print();
-      toast(`Prepared PDF export with ${rowsWithReceipts.length} rows`);
-    }, 500);
+    ensureSpace(0.35);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(`Total: $${total.toFixed(2)}`, pageW - margin, y + 0.18, { align: "right" });
+    doc.save(`expense-ledger-${stamp}.pdf`);
+    toast(`Downloaded PDF (${rowsWithReceipts.length} rows, 7x11 format)`);
   };
 
   const meta = PAGE_META[route];
