@@ -582,11 +582,12 @@ function App() {
   const showKickers = tweaks.showKickers;
   const dashboardName = (userBusiness?.name || "Your business").trim() || "Your business";
 
-  if (supabaseEnabled && authLoading) return <AppLoading label="Checking session…" />;
-  if (supabaseEnabled && !session) {
-    return <AuthScreen />;
+  if (!supabaseEnabled) {
+    return <AuthScreen setupRequired />;
   }
-  if (supabaseEnabled && dataLoading) return <AppLoading label="Loading your workspace…" />;
+  if (authLoading) return <AppLoading label="Checking session…" />;
+  if (!session) return <AuthScreen />;
+  if (dataLoading) return <AppLoading label="Loading your workspace…" />;
 
   let screen = null;
   if (route === "dashboard") screen = <Dashboard state={state} go={go} />;else

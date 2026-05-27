@@ -12,13 +12,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   outputFileTracingRoot: process.cwd(),
-  async redirects() {
+  async rewrites() {
     return [
-      {
-        source: "/",
-        destination: "/classic/",
-        permanent: false,
-      },
+      { source: "/", destination: "/classic/index.html" },
+      { source: "/classic", destination: "/classic/index.html" },
     ];
   },
 };

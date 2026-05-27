@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
 
 const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://busi-snapspend.vercel.app").replace(/\/$/, "");
 
@@ -55,10 +54,7 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#b8442a" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>
-      <body>
-        {children}
-        <RegisterServiceWorker />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

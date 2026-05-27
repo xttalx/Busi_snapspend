@@ -1,5 +1,5 @@
-/* Auth screen — shown when Supabase is configured and user is not signed in */
-function AuthScreen() {
+/* Auth screen — sign in / create account (required before using the app) */
+function AuthScreen({ setupRequired = false }) {
   const [mode, setMode] = React.useState("signin");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -9,6 +9,7 @@ function AuthScreen() {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (setupRequired) return;
     setError(null);
     setMessage(null);
     setBusy(true);
@@ -36,8 +37,16 @@ function AuthScreen() {
           Snapspend<span className="dot"></span>
         </div>
         <p className="auth-lead">
-          Sign in to sync expenses, invoices, and payroll across devices.
+          {setupRequired ?
+            "Sign-in is required to use Snapspend. Cloud sync is not configured on this server yet." :
+            "Sign in or create an account to use your workspace. Your data is saved securely in the cloud."}
         </p>
+
+        {setupRequired && (
+          <div className="auth-message">
+            Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in your host settings, then redeploy.
+          </div>
+        )}
 
         <form className="auth-form" onSubmit={submit}>
           <div className="field">
@@ -69,12 +78,12 @@ function AuthScreen() {
           {error && <div className="auth-error">{error}</div>}
           {message && <div className="auth-message">{message}</div>}
 
-          <button className="btn primary auth-submit" type="submit" disabled={busy}>
+          <button className="btn primary auth-submit" type="submit" disabled={busy || setupRequired}>
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
         </form>
 
-        <div className="auth-switch">
+        {!setupRequired && <div className="auth-switch">
           {mode === "signin" ? (
             <>
               New here?{" "}
@@ -90,7 +99,7 @@ function AuthScreen() {
               </button>
             </>
           )}
-        </div>
+        </div>}
 
       </div>
     </div>
