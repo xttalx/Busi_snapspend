@@ -1,1 +1,10 @@
 .thumbnail
+node_modules/
+.next/
+out/
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map
+supabase-config.js
+public/classic/supabase-config.js

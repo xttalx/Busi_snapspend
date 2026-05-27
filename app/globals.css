@@ -1,0 +1,174 @@
+:root {
+  --paper: #fbf7ef;
+  --paper-2: #f3eee2;
+  --ink: #171614;
+  --ink-2: #3a3733;
+  --ink-3: #6a655c;
+  --accent: #b8442a;
+  --accent-ink: #fbf7ef;
+  --rule: #d8d1bf;
+  --radius: 8px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+.shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-title {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.brand-sub {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.shell-main {
+  flex: 1;
+  padding: 24px 20px 40px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.hero-card {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 28px 24px;
+  box-shadow: 0 1px 0 rgba(23, 22, 20, 0.04);
+}
+
+.hero-card h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.75rem;
+  margin: 0 0 8px;
+}
+
+.hero-card p {
+  margin: 0 0 20px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.install-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.install-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: opacity 0.15s ease;
+}
+
+.install-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.install-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.install-btn-icon {
+  display: inline-flex;
+}
+
+.install-pill.installed {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--paper-2);
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+}
+
+.install-ios-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-3);
+  line-height: 1.45;
+  max-width: 280px;
+}
+
+.legacy-link {
+  display: inline-block;
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
+
+@media (display-mode: standalone) {
+  .shell-header {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .shell-main {
+    padding-bottom: max(40px, env(safe-area-inset-bottom));
+  }
+}
