@@ -119,23 +119,13 @@ const DIRECTION_MAP = {
   ledger: "ledger"
 };
 
-function toCsvCell(value) {
-  const s = String(value ?? "");
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, "\"\"")}"`;
-  return s;
-}
-
-function downloadCsv(filename, rows) {
-  const csv = "\uFEFF" + rows.map((row) => row.map(toCsvCell).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+function escapeHtml(value) {
+  return String(value ?? "").
+  replace(/&/g, "&amp;").
+  replace(/</g, "&lt;").
+  replace(/>/g, "&gt;").
+  replace(/"/g, "&quot;").
+  replace(/'/g, "&#39;");
 }
 
 function SnapspendTweaks({ tweaks, setTweak }) {
@@ -343,7 +333,31 @@ function App() {
     setTimeout(() => setToastMsg(null), 2400);
   };
 
-  const exportExpensesCsv = () => {
+  const resolveReceiptForExport = async (receipt) => {
+    if (!receipt) return null;
+    if (receipt.dataUrl) {
+      return {
+        url: receipt.dataUrl,
+        isImage: (receipt.type || "").startsWith("image/"),
+        name: receipt.name || "receipt",
+      };
+    }
+    if (receipt.storagePath && window.SnapAPI?.isEnabled()) {
+      try {
+        const url = await window.SnapAPI.getReceiptUrl(receipt.storagePath);
+        return {
+          url,
+          isImage: (receipt.type || "").startsWith("image/"),
+          name: receipt.name || "receipt",
+        };
+      } catch (_e) {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const exportExpensesPdf = async () => {
     const paidBills = (state.bills || [])
       .filter((b) => (b.status || "").toLowerCase() === "paid")
       .map((b) => ({
@@ -355,6 +369,7 @@ function App() {
         amount: Number(b.amount || 0),
         source: "bill",
         status: b.status || "paid",
+        receipt: b.attachment || null,
       }));
 
     const expenses = (state.expenses || []).map((e) => {
@@ -368,30 +383,99 @@ function App() {
         amount: Number(e.amount || 0),
         source: "expense",
         status: "",
+        receipt: e.receipt || null,
       };
     });
 
-    const rowsData = [...expenses, ...paidBills].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const rows = [
-    ["Date", "Vendor", "Note", "Category", "Method", "Amount", "Source", "Status"],
-    ...rowsData.map((r) => [
-      r.date,
-      r.vendor,
-      r.note,
-      r.category,
-      r.method,
-      r.amount.toFixed(2),
-      r.source,
-      r.status])];
+    const rowsData = [...expenses, ...paidBills].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
     if (rowsData.length === 0) {
       toast("No expenses to export yet");
       return;
     }
 
+    const rowsWithReceipts = await Promise.all(
+      rowsData.map(async (r) => ({ ...r, receiptResolved: await resolveReceiptForExport(r.receipt) }))
+    );
+
+    const total = rowsWithReceipts.reduce((s, r) => s + Number(r.amount || 0), 0);
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`expense-ledger-${stamp}.csv`, rows);
-    toast(`Exported ${rowsData.length} ledger rows to CSV`);
+    const htmlRows = rowsWithReceipts.map((r) => {
+      const receiptCell = !r.receiptResolved ?
+      "—" :
+      r.receiptResolved.isImage ?
+      `<img src="${escapeHtml(r.receiptResolved.url)}" alt="${escapeHtml(r.receiptResolved.name)}" style="max-width:120px;max-height:90px;border:1px solid #ddd;border-radius:4px;display:block;" />` :
+      `<a href="${escapeHtml(r.receiptResolved.url)}" target="_blank" rel="noreferrer">${escapeHtml(r.receiptResolved.name || "Open receipt")}</a>`;
+
+      return `<tr>
+        <td>${escapeHtml(r.date)}</td>
+        <td>${escapeHtml(r.vendor)}</td>
+        <td>${escapeHtml(r.note)}</td>
+        <td>${escapeHtml(r.category)}</td>
+        <td>${escapeHtml(r.method)}</td>
+        <td style="text-align:right;">${Number(r.amount || 0).toFixed(2)}</td>
+        <td>${escapeHtml(r.source)}</td>
+        <td>${escapeHtml(r.status)}</td>
+        <td>${receiptCell}</td>
+      </tr>`;
+    }).join("");
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast("Popup blocked. Please allow popups to export PDF.");
+      return;
+    }
+
+    w.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Expense Ledger ${escapeHtml(stamp)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .meta { margin: 0 0 14px; color: #555; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; text-align: left; }
+    tfoot td { font-weight: 700; }
+    @media print { body { margin: 10mm; } a { color: #111; text-decoration: none; } }
+  </style>
+</head>
+<body>
+  <h1>Expense Ledger</h1>
+  <p class="meta">Generated ${escapeHtml(new Date().toLocaleString())} · Rows: ${rowsWithReceipts.length}</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Vendor</th>
+        <th>Note</th>
+        <th>Category</th>
+        <th>Method</th>
+        <th>Amount</th>
+        <th>Source</th>
+        <th>Status</th>
+        <th>Receipt</th>
+      </tr>
+    </thead>
+    <tbody>${htmlRows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5">Total</td>
+        <td style="text-align:right;">${total.toFixed(2)}</td>
+        <td colspan="3"></td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      w.print();
+      toast(`Prepared PDF export with ${rowsWithReceipts.length} rows`);
+    }, 500);
   };
 
   const meta = PAGE_META[route];
@@ -458,8 +542,8 @@ function App() {
               </button>
             }
             {route === "expenses" &&
-            <button className="btn" onClick={exportExpensesCsv}>
-                <Icon name="external" size={13} /> Export CSV
+            <button className="btn" onClick={exportExpensesPdf}>
+                <Icon name="external" size={13} /> Export PDF
               </button>
             }
             {route !== "dashboard" && route !== "invoices" && route !== "paystubs" &&
