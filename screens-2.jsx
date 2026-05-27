@@ -611,6 +611,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const [hours, setHours] = useState2(80);
   const [overtimeHours, setOvertimeHours] = useState2(0);
   const [commissionPct, setCommissionPct] = useState2(0);
+  const [paystubMonth, setPaystubMonth] = useState2("");
   const [issued, setIssued] = useState2(today.toISOString().slice(0, 10));
   const [stub, setStub] = useState2(state.paystubs[0]);
   const [generated, setGenerated] = useState2(false);
@@ -706,15 +707,26 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const previewDedTotal = confirmDeductions.reduce((s, d) => s + previewGross * (Number(d.rate) || 0) + (Number(d.fixed) || 0), 0);
   const previewNet = previewGross - previewTaxTotal - previewDedTotal;
 
-  const employeeStubs = state.paystubs.filter((p) => p.employeeId === employeeId);
+  const filteredPaystubs = state.paystubs
+    .filter((p) => !paystubMonth || String(p.issued || "").startsWith(paystubMonth))
+    .sort((a, b) => String(b.issued || "").localeCompare(String(a.issued || "")));
+
+  const employeeStubs = filteredPaystubs.filter((p) => p.employeeId === employeeId);
 
   return (
     <>
       <div className="toolbar">
         <div className="left">
           <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-            {state.paystubs.length} statements on file
+            {filteredPaystubs.length} statements on file
           </span>
+          <button className="btn sm ghost" onClick={() => setPaystubMonth("")}>All months</button>
+          <input
+            className="input mono"
+            type="month"
+            value={paystubMonth}
+            onChange={(e) => setPaystubMonth(e.target.value)}
+            style={{ width: 154 }} />
         </div>
         <div className="right">
           <button className="btn desktop-doc-actions" onClick={() => window.print()}>

@@ -526,8 +526,11 @@ function ExpenseDrawer({ open, onClose, onSave, categories }) {
 function Expenses({ state, dispatch, toast }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+  const [expenseMonth, setExpenseMonth] = useState("");
+  const [wageMonth, setWageMonth] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [viewing, setViewing] = useState(null); // expense whose receipt is open
+  const receiptInputRefs = React.useRef({});
 
   const paidBillEntries = useMemo(() =>
   (state.bills || []).
@@ -541,11 +544,182 @@ function Expenses({ state, dispatch, toast }) {
   const filtered = useMemo(() => {
     return ledgerEntries
       .filter(e => filter === "all" || e.category === filter)
+      .filter(e => !expenseMonth || (e.date || "").startsWith(expenseMonth))
       .filter(e => !q || e.vendor.toLowerCase().includes(q.toLowerCase()) || (e.note || "").toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [ledgerEntries, filter, q]);
+  }, [ledgerEntries, filter, expenseMonth, q]);
 
   const total = filtered.reduce((s, e) => s + e.amount, 0);
+
+  const paidWages = useMemo(() => {
+    return (state.paystubs || [])
+      .filter((p) => !wageMonth || (p.issued || "").startsWith(wageMonth))
+      .sort((a, b) => String(b.issued || "").localeCompare(String(a.issued || "")));
+  }, [state.paystubs, wageMonth]);
+
+  const wagesTotal = paidWages.reduce((s, p) => s + Number(p.gross || 0), 0);
+  const employeeById = useMemo(
+    () => Object.fromEntries((state.employees || []).map((e) => [e.id, e])),
+    [state.employees]
+  );
+
+  const promptMonthRange = () => {
+    const fromInput = window.prompt("From month (YYYY-MM). Leave blank for all dates.", "");
+    if (fromInput === null) return null;
+    const toInput = window.prompt("To month (YYYY-MM). Leave blank for all dates.", "");
+    if (toInput === null) return null;
+    const fromMonth = (fromInput || "").trim();
+    const toMonth = (toInput || "").trim();
+    const monthPattern = /^\d{4}-\d{2}$/;
+    if (fromMonth && !monthPattern.test(fromMonth)) {
+      toast("Invalid From month. Use YYYY-MM.");
+      return null;
+    }
+    if (toMonth && !monthPattern.test(toMonth)) {
+      toast("Invalid To month. Use YYYY-MM.");
+      return null;
+    }
+    if (fromMonth && toMonth && fromMonth > toMonth) {
+      toast("From month must be before or equal to To month.");
+      return null;
+    }
+    return { fromMonth, toMonth };
+  };
+
+  const monthInRange = (dateStr, range) => {
+    const month = String(dateStr || "").slice(0, 7);
+    if (!month) return false;
+    if (range.fromMonth && month < range.fromMonth) return false;
+    if (range.toMonth && month > range.toMonth) return false;
+    return true;
+  };
+
+  const readReceiptFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl: reader.result,
+    });
+    reader.onerror = () => reject(new Error("file-read-failed"));
+    reader.readAsDataURL(file);
+  });
+
+  const handleReceiptPicked = async (expense, file) => {
+    if (!file) return;
+    const okTypes = /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf)$/i;
+    if (!okTypes.test(file.type)) {
+      toast("Use a JPG, PNG, WebP or PDF receipt.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast("Receipt exceeds 8 MB.");
+      return;
+    }
+    try {
+      const receipt = await readReceiptFile(file);
+      if (expense.isBill) {
+        const baseBill = (state.bills || []).find((b) => b.id === expense.id);
+        if (!baseBill) {
+          toast("Could not find the bill to update.");
+          return;
+        }
+        dispatch({ type: "UPDATE_BILL", bill: { ...baseBill, attachment: receipt } });
+      } else {
+        dispatch({ type: "UPDATE_EXPENSE", expense: { ...expense, receipt } });
+      }
+      toast(expense.receipt ? "Receipt updated." : "Receipt attached.");
+    } catch (_e) {
+      toast("Couldn't read that file.");
+    }
+  };
+
+  const removeLedgerEntry = (expense) => {
+    if (!window.confirm(`Delete entry "${expense.vendor}"?`)) return;
+    if (expense.isBill) {
+      dispatch({ type: "REMOVE_BILL", id: expense.id });
+      toast("Bill entry deleted.");
+      return;
+    }
+    dispatch({ type: "REMOVE_EXPENSE", id: expense.id });
+    toast("Expense deleted.");
+  };
+
+  const exportPaidWagesPdf = () => {
+    if (!window.jspdf?.jsPDF) {
+      toast("PDF library not loaded. Refresh and try again.");
+      return;
+    }
+    const range = promptMonthRange();
+    if (!range) return;
+
+    const rows = (state.paystubs || [])
+      .filter((p) => monthInRange(p.issued, range))
+      .sort((a, b) => String(b.issued || "").localeCompare(String(a.issued || "")));
+    if (rows.length === 0) {
+      toast("No paid wages in that duration.");
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "portrait", unit: "in", format: [7, 11], compress: true });
+    const pageW = 7;
+    const pageH = 11;
+    const margin = 0.35;
+    let y = margin;
+    const durationLabel = range.fromMonth || range.toMonth ?
+      `${range.fromMonth || "start"} to ${range.toMonth || "end"}` :
+      "All dates";
+
+    const drawHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("Paid Wages Ledger", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Generated ${new Date().toLocaleString()}`, margin, y + 0.16);
+      doc.text(`Duration ${durationLabel}`, margin, y + 0.30);
+      y += 0.46;
+      doc.line(margin, y, pageW - margin, y);
+      y += 0.08;
+    };
+    const ensureSpace = (needed) => {
+      if (y + needed <= pageH - margin) return;
+      doc.addPage([7, 11], "portrait");
+      y = margin;
+      drawHeader();
+    };
+
+    drawHeader();
+    rows.forEach((p) => {
+      const emp = employeeById[p.employeeId];
+      const gross = Number(p.gross || 0);
+      const taxes = Number(p.taxes || 0);
+      const deductions = Number(p.deductions || 0);
+      const net = gross - taxes - deductions;
+      ensureSpace(0.75);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text(emp?.name || "Unknown employee", margin, y + 0.13);
+      doc.text(`$${gross.toFixed(2)}`, pageW - margin, y + 0.13, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Issued ${p.issued || "—"}  •  ${emp?.role || p.employeeId || "—"}`, margin, y + 0.28);
+      doc.text(`Period ${p.periodStart || "—"} to ${p.periodEnd || "—"}`, margin, y + 0.42);
+      doc.text(`Net $${net.toFixed(2)} after taxes/deductions`, margin, y + 0.56);
+      doc.line(margin, y + 0.68, pageW - margin, y + 0.68);
+      y += 0.76;
+    });
+
+    const totalGross = rows.reduce((s, p) => s + Number(p.gross || 0), 0);
+    ensureSpace(0.3);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(`Total gross wages: $${totalGross.toFixed(2)}`, pageW - margin, y + 0.18, { align: "right" });
+    const stamp = new Date().toISOString().slice(0, 10);
+    doc.save(`paid-wages-${stamp}.pdf`);
+  };
 
   return (
     <>
@@ -568,6 +742,15 @@ function Expenses({ state, dispatch, toast }) {
               Bills (paid)
             </button>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button className="btn sm ghost" onClick={() => setExpenseMonth("")}>All months</button>
+            <input
+              className="input mono"
+              type="month"
+              value={expenseMonth}
+              onChange={(e) => setExpenseMonth(e.target.value)}
+              style={{ width: 154 }} />
+          </div>
         </div>
         <div className="right">
           <button className="btn primary" onClick={() => setDrawer(true)}>
@@ -584,13 +767,14 @@ function Expenses({ state, dispatch, toast }) {
             <th style={{ width: 160 }}>Category</th>
             <th style={{ width: 130 }}>Method</th>
             <th style={{ width: 110 }}>Receipt</th>
+            <th style={{ width: 90 }}>Actions</th>
             <th className="num" style={{ width: 130 }}>Amount</th>
           </tr>
         </thead>
         <tbody>
           {filtered.length === 0 && (
             <tr>
-              <td colSpan="6"><div className="empty">No expenses match your filter.</div></td>
+              <td colSpan="7"><div className="empty">No expenses match your filter.</div></td>
             </tr>
           )}
           {filtered.map(e => {
@@ -616,8 +800,31 @@ function Expenses({ state, dispatch, toast }) {
                       {r.type && r.type.startsWith("image/") ? "Image" : "PDF"}
                     </span>
                   ) : (
-                    <span style={{ color: "var(--ink-4)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" }}>—</span>
+                    <span style={{ color: "var(--ink-4)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" }}>{e.isBill ? "from bill" : "—"}</span>
                   )}
+                </td>
+                <td>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                    <button
+                      className="iconbtn"
+                      title={e.receipt ? "Replace receipt" : "Add receipt"}
+                      onClick={() => receiptInputRefs.current[e.id] && receiptInputRefs.current[e.id].click()}>
+                      <Icon name={e.receipt ? "edit" : "plus"} size={12} />
+                    </button>
+                    <button className="iconbtn" title="Delete entry" onClick={() => removeLedgerEntry(e)}>
+                      <Icon name="close" size={12} />
+                    </button>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      style={{ display: "none" }}
+                      ref={(el) => { receiptInputRefs.current[e.id] = el; }}
+                      onChange={(evt) => {
+                        const file = evt.target.files && evt.target.files[0];
+                        handleReceiptPicked(e, file);
+                        evt.target.value = "";
+                      }} />
+                  </div>
                 </td>
                 <td className="num">{fmtMoney(e.amount)}</td>
               </tr>
@@ -629,6 +836,7 @@ function Expenses({ state, dispatch, toast }) {
               <td colSpan="3" style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)", paddingTop: 18 }}>
                 {filtered.length} {filtered.length === 1 ? "entry" : "entries"} · totalled below
               </td>
+              <td></td>
               <td></td>
               <td className="num" style={{ paddingTop: 18, fontFamily: "var(--serif)", fontSize: 22, color: "var(--ink)" }}>
                 {fmtMoney(total)}
@@ -653,6 +861,63 @@ function Expenses({ state, dispatch, toast }) {
       {viewing && viewing.receipt && (
         <ReceiptViewer expense={viewing} onClose={() => setViewing(null)} />
       )}
+
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <h2>Paid wages</h2>
+        <span className="meta">{paidWages.length} statements</span>
+      </div>
+
+      <div className="toolbar" style={{ marginTop: -6 }}>
+        <div className="left" style={{ gap: 8 }}>
+          <button className="btn sm ghost" onClick={() => setWageMonth("")}>All months</button>
+          <input
+            className="input mono"
+            type="month"
+            value={wageMonth}
+            onChange={(e) => setWageMonth(e.target.value)}
+            style={{ width: 154 }} />
+        </div>
+        <div className="right">
+          <button className="btn sm ghost" onClick={exportPaidWagesPdf}>
+            <Icon name="download" size={12} /> Export PDF
+          </button>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-3)" }}>
+            Total paid: {fmtMoney(wagesTotal)}
+          </span>
+        </div>
+      </div>
+
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th style={{ width: 120 }}>Issued</th>
+            <th>Employee</th>
+            <th style={{ width: 180 }}>Period</th>
+            <th className="num" style={{ width: 140 }}>Gross</th>
+          </tr>
+        </thead>
+        <tbody>
+          {paidWages.length === 0 && (
+            <tr>
+              <td colSpan="4"><div className="empty">No pay statements for this month filter.</div></td>
+            </tr>
+          )}
+          {paidWages.map((p) => {
+            const emp = employeeById[p.employeeId];
+            return (
+              <tr key={p.id}>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{p.issued || "—"}</span></td>
+                <td>
+                  <div className="vendor">{emp ? emp.name : "Unknown employee"}</div>
+                  <div className="sub">{emp ? emp.role : p.employeeId}</div>
+                </td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{p.periodStart || "—"} → {p.periodEnd || "—"}</span></td>
+                <td className="num">{fmtMoney(Number(p.gross || 0))}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </>
   );
 }

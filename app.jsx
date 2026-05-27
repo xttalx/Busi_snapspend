@@ -76,6 +76,8 @@ function reducer(state, action) {
         ...state,
         expenses: state.expenses.map((e) => (e.id === action.expense.id ? action.expense : e)),
       };
+    case "REMOVE_EXPENSE":
+      return { ...state, expenses: state.expenses.filter((e) => e.id !== action.id) };
     case "ADD_INVOICE":
       return { ...state, invoices: [action.invoice, ...state.invoices] };
     case "UPDATE_INVOICE":
@@ -381,6 +383,35 @@ function App() {
       return;
     }
 
+    const fromMonthInput = window.prompt("Export from month (YYYY-MM). Leave blank for all dates.", "");
+    if (fromMonthInput === null) return;
+    const toMonthInput = window.prompt("Export to month (YYYY-MM). Leave blank for all dates.", "");
+    if (toMonthInput === null) return;
+
+    const fromMonth = (fromMonthInput || "").trim();
+    const toMonth = (toMonthInput || "").trim();
+    const monthPattern = /^\d{4}-\d{2}$/;
+    if (fromMonth && !monthPattern.test(fromMonth)) {
+      toast("Invalid From month. Use YYYY-MM.");
+      return;
+    }
+    if (toMonth && !monthPattern.test(toMonth)) {
+      toast("Invalid To month. Use YYYY-MM.");
+      return;
+    }
+    if (fromMonth && toMonth && fromMonth > toMonth) {
+      toast("From month must be before or equal to To month.");
+      return;
+    }
+
+    const inDuration = (dateStr) => {
+      const m = String(dateStr || "").slice(0, 7);
+      if (!m) return false;
+      if (fromMonth && m < fromMonth) return false;
+      if (toMonth && m > toMonth) return false;
+      return true;
+    };
+
     const paidBills = (state.bills || [])
       .filter((b) => (b.status || "").toLowerCase() === "paid")
       .map((b) => ({
@@ -410,7 +441,9 @@ function App() {
       };
     });
 
-    const rowsData = [...expenses, ...paidBills].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const rowsData = [...expenses, ...paidBills]
+      .filter((r) => inDuration(r.date))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
     if (rowsData.length === 0) {
       toast("No expenses to export yet");
@@ -441,6 +474,10 @@ function App() {
     const leftColW = contentW - receiptColW - 0.15;
     let y = margin;
 
+    const durationLabel = fromMonth || toMonth ?
+    `${fromMonth || "start"} to ${toMonth || "end"}` :
+    "All dates";
+
     const drawHeader = () => {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
@@ -448,7 +485,8 @@ function App() {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.text(`Generated ${new Date().toLocaleString()}`, margin, y + 0.16);
-      y += 0.32;
+      doc.text(`Duration ${durationLabel}`, margin, y + 0.30);
+      y += 0.46;
       doc.setLineWidth(0.01);
       doc.line(margin, y, pageW - margin, y);
       y += 0.08;

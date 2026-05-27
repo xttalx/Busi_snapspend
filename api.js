@@ -159,6 +159,9 @@
       case "UPDATE_EXPENSE":
         await saveExpense(userId, action.expense);
         break;
+      case "REMOVE_EXPENSE":
+        await deleteEntity("expenses", action.id);
+        break;
       case "ADD_INVOICE":
       case "UPDATE_INVOICE":
         await upsertEntity("invoices", userId, action.invoice);
