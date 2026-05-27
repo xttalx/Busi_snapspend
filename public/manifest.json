@@ -1,11 +1,11 @@
 {
-  "id": "/",
+  "id": "/classic/",
   "name": "Snapspend",
   "short_name": "Snapspend",
   "description": "Expense, invoice, and payroll for the solo studio.",
   "lang": "en",
   "dir": "ltr",
-  "start_url": "/",
+  "start_url": "/classic/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
@@ -39,7 +39,7 @@
       "name": "Dashboard",
       "short_name": "Home",
       "description": "Overview and recent activity",
-      "url": "/",
+      "url": "/classic/",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "npm run icons:pwa && next build",
+    "dev": "node scripts/prepare-classic.mjs && next dev",
+    "build": "npm run icons:pwa && node scripts/prepare-classic.mjs && next build",
     "start": "next start",
     "lint": "next lint",
     "icons:pwa": "node scripts/generate-pwa-icons.mjs"

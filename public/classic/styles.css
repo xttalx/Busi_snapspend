@@ -242,6 +242,27 @@ body {
 .sidebar-menu { display: block; }
 .mobile-doc-actions { display: none; }
 
+@media (min-width: 1101px) {
+  .mobile-menu-toggle { display: none !important; }
+  .sidebar-menu { display: block !important; }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    min-height: 100vh;
+    padding: 28px 18px 20px;
+    border-right: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  .wordmark,
+  .userchip { display: flex !important; }
+  .sidebar-signout {
+    position: static;
+    margin-top: 8px;
+    width: 100%;
+  }
+}
+
 /* ---------- Page chrome ---------- */
 .page {
   padding: 28px 40px 80px;
@@ -1669,55 +1690,6 @@ input[type="number"] { -moz-appearance: textfield; }
     min-height: 100dvh;
   }
 
-  .sidebar {
-    position: static;
-    top: auto;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--rule);
-    padding: 14px 12px 12px;
-    gap: 12px;
-  }
-
-  .wordmark { font-size: 22px; }
-  .wordmark.stacked .wm-primary { font-size: 19px; }
-
-  .nav-group {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 6px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-  }
-  .nav-label {
-    width: 100%;
-    padding: 0 2px 4px;
-    flex: 0 0 100%;
-  }
-  .nav-item {
-    border: 1px solid var(--rule);
-    border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 12px;
-    width: auto;
-    flex: 0 0 auto;
-  }
-  .nav-item.active::before { display: none; }
-
-  .userchip {
-    margin-top: 2px;
-    padding: 8px 0 0;
-  }
-  .sidebar-signout {
-    margin-top: 6px;
-    width: auto;
-    align-self: flex-start;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-
   .page {
     padding: 16px 14px 54px;
     max-width: none;
@@ -1871,8 +1843,8 @@ input[type="number"] { -moz-appearance: textfield; }
   }
 }
 
-/* Phone / portrait mobile navigation treatment */
-@media (max-width: 900px) {
+/* Tablet + phone: bottom-left hamburger (desktop sidebar is min-width 1101px only) */
+@media (max-width: 1100px) {
   .sidebar {
     position: static;
     height: 0;
