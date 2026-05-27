@@ -19,6 +19,9 @@ async function downloadPreviewPdfFromElement(element, fileName) {
   if (!window.jspdf?.jsPDF) {
     throw new Error("PDF library not loaded.");
   }
+  if (!window.html2canvas) {
+    throw new Error("PDF renderer missing. Refresh once and try again.");
+  }
   if (!element) {
     throw new Error("Preview document not found.");
   }

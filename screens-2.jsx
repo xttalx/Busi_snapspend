@@ -117,12 +117,12 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
     try {
       if (mode !== "preview") {
         setMode("preview");
-        await new Promise((resolve) => setTimeout(resolve, 120));
+        await new Promise((resolve) => setTimeout(resolve, 220));
       }
       await window.downloadInvoicePdf({ invoice: inv, element: invoicePreviewRef.current });
       toast("Invoice PDF downloaded.");
     } catch (error) {
-      toast("Could not download invoice PDF.");
+      toast(error?.message || "Could not download invoice PDF.");
       console.error(error);
     }
   };
@@ -722,7 +722,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
       await window.downloadPaystubPdf({ stub: currentStub, element: paystubPreviewRef.current });
       toast("Pay statement PDF downloaded.");
     } catch (error) {
-      toast("Could not download pay statement PDF.");
+      toast(error?.message || "Could not download pay statement PDF.");
       console.error(error);
     }
   };
