@@ -654,8 +654,14 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
 
   // STEP 1: open the confirmation modal preloaded with the employee's
   // country withholdings. User can edit / add / remove before confirming.
+  const empLocation = emp.region
+    ? `${emp.country || "United States"} · ${emp.region}`
+    : (emp.country || "United States");
+
   const openConfirm = () => {
-    const preset = (window.SEED.COUNTRY_PRESETS || {})[emp.country || "United States"] || [];
+    const preset = window.SEED.getWithholdingPresets
+      ? window.SEED.getWithholdingPresets(emp.country || "United States", emp.region)
+      : (window.SEED.COUNTRY_PRESETS || {})[emp.country || "United States"] || [];
     setConfirmTaxes(preset.map((p, i) => ({ id: "t" + Date.now() + "_" + i, name: p.name, rate: p.rate })));
     setConfirmDeductions([]);
     setConfirmOpen(true);
@@ -806,7 +812,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
                 <Icon name="sparkles" size={13} /> Generate statement
               </button>
               <span className="help" style={{ marginTop: -6 }}>
-                You'll review the income withholding categories for <b>{emp.country || "United States"}</b> before the statement is created.
+                You'll review the income withholding categories for <b>{empLocation}</b> before the statement is created.
               </span>
             </div>
           </div>
@@ -853,7 +859,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
                 <div className="kicker">Confirm withholding categories</div>
                 <h3>Review before generating · {emp.name}</h3>
                 <p className="modal-sub">
-                  Loaded statutory categories for <b>{emp.country || "United States"}</b>.
+                  Loaded statutory categories for <b>{empLocation}</b>.
                   Edit any rate, rename a category, or add one-off deductions before the statement is created. Changes here apply to this statement only.
                 </p>
               </div>
@@ -882,7 +888,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
 
               <div className="modal-section">
                 <div className="modal-section-head">
-                  <h4>Income withheld · {emp.country || "United States"}</h4>
+                  <h4>Income withheld · {empLocation}</h4>
                   <span className="meta">{confirmTaxes.length} categories</span>
                 </div>
                 <div className="rate-table">
@@ -992,17 +998,28 @@ function EmployeeDrawer({ open, employee, onClose, onSave, onDelete }) {
   const blank = {
     name: "", role: "", payType: "Salary", payRate: 60000,
     taxRate: 0.20, since: new Date().toISOString().slice(0, 7),
-    country: "United States"
+    country: "United States",
+    region: (window.SEED.getRegionOptions && window.SEED.getRegionOptions("United States")[0]) || "",
   };
   const [form, setForm] = useState2(blank);
 
   React.useEffect(() => {
-    if (open) setForm(employee ? { ...employee } : blank);
+    if (!open) return;
+    const base = employee ? { ...employee } : { ...blank };
+    const country = base.country || "United States";
+    const regions = window.SEED.getRegionOptions ? window.SEED.getRegionOptions(country) : [];
+    if (!base.region && regions.length) base.region = regions[0];
+    setForm(base);
   }, [open, employee]);
 
   if (!open) return null;
   const valid = form.name.trim() && form.role.trim() && form.payRate > 0;
-  const countryWithholdings = (window.SEED.COUNTRY_PRESETS || {})[form.country] || [];
+  const regionOptions = window.SEED.getRegionOptions ? window.SEED.getRegionOptions(form.country) : [];
+  const regionLabel = window.SEED.getRegionLabel ? window.SEED.getRegionLabel(form.country) : "Province / state";
+  const countryWithholdings = window.SEED.getWithholdingPresets
+    ? window.SEED.getWithholdingPresets(form.country, form.region)
+    : (window.SEED.COUNTRY_PRESETS || {})[form.country] || [];
+  const locationLabel = form.region ? `${form.country} · ${form.region}` : form.country;
 
   return (
     <>
@@ -1063,7 +1080,15 @@ function EmployeeDrawer({ open, employee, onClose, onSave, onDelete }) {
           <div className="field">
             <label>Country of employment</label>
             <select className="select" value={form.country}
-            onChange={(e) => setForm({ ...form, country: e.target.value })}>
+            onChange={(e) => {
+              const nextCountry = e.target.value;
+              const regions = window.SEED.getRegionOptions ? window.SEED.getRegionOptions(nextCountry) : [];
+              setForm({
+                ...form,
+                country: nextCountry,
+                region: regions[0] || "",
+              });
+            }}>
               {Object.keys(window.SEED.COUNTRY_PRESETS).map((k) => <option key={k}>{k}</option>)}
             </select>
             <span className="help">
@@ -1071,7 +1096,20 @@ function EmployeeDrawer({ open, employee, onClose, onSave, onDelete }) {
             </span>
           </div>
 
-          {/* Preview of withholdings for the selected country */}
+          {regionOptions.length > 0 &&
+          <div className="field">
+            <label>{regionLabel}</label>
+            <select className="select" value={form.region || regionOptions[0]}
+            onChange={(e) => setForm({ ...form, region: e.target.value })}>
+              {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <span className="help">
+              Provincial or state income tax is included in the withholding preview below.
+            </span>
+          </div>
+          }
+
+          {/* Preview of withholdings for the selected country / region */}
           <div style={{
             border: "1px solid var(--rule)",
             background: "var(--paper-2)",
@@ -1079,7 +1117,7 @@ function EmployeeDrawer({ open, employee, onClose, onSave, onDelete }) {
             padding: "12px 14px"
           }}>
             <div className="kicker" style={{ fontSize: 9.5, marginBottom: 8 }}>
-              Withholdings · {form.country}
+              Withholdings · {locationLabel}
             </div>
             {countryWithholdings.length === 0 ?
             <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
@@ -1166,6 +1204,7 @@ function EmployeesScreen({ state, dispatch, toast, go, params }) {
         {state.employees.map((e) => {
           const initials = e.name.split(" ").map((s) => s[0]).join("");
           const country = e.country || "—";
+          const location = e.region ? `${country} · ${e.region}` : country;
           return (
             <div key={e.id} className="emp-card">
               <div className="top">
@@ -1180,7 +1219,7 @@ function EmployeesScreen({ state, dispatch, toast, go, params }) {
                 <div><div className="k">{e.payType === "Salary" ? "Annual" : "Hourly"}</div>
                   <div className="v">{e.payType === "Salary" ? fmtMoney(e.payRate) : "$" + e.payRate + "/hr"}</div>
                 </div>
-                <div><div className="k">Country</div><div className="v" style={{ fontSize: 12, fontFamily: "var(--sans)" }}>{country}</div></div>
+                <div><div className="k">Location</div><div className="v" style={{ fontSize: 12, fontFamily: "var(--sans)" }}>{location}</div></div>
                 <div><div className="k">Since</div><div className="v">{e.since}</div></div>
               </div>
               <div className="actions">

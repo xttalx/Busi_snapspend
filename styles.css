@@ -240,11 +240,16 @@ body {
 }
 .mobile-menu-toggle { display: none; }
 .sidebar-menu { display: block; }
+.sidebar-menu-footer { display: none; }
+.sidebar-signout-mobile { display: none; }
 .mobile-doc-actions { display: none; }
 
 @media (min-width: 1101px) {
   .mobile-menu-toggle { display: none !important; }
   .sidebar-menu { display: block !important; }
+  .sidebar-menu-footer { display: none !important; }
+  .sidebar-signout-mobile { display: none !important; }
+  .sidebar-signout-desktop { display: inline-flex !important; }
   .sidebar {
     position: sticky;
     top: 0;
@@ -1911,17 +1916,25 @@ input[type="number"] { -moz-appearance: textfield; }
     background: transparent;
   }
 
-  .sidebar-signout {
-    position: fixed;
-    top: calc(env(safe-area-inset-top) + 8px);
-    right: calc(env(safe-area-inset-right) + 8px);
-    z-index: 90;
+  .sidebar-signout-desktop {
+    display: none !important;
+  }
+
+  .sidebar-menu-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .sidebar-signout-mobile {
+    display: flex;
+    width: 100%;
     margin: 0;
-    width: auto;
     border: 1px solid var(--rule);
-    background: var(--paper);
-    box-shadow: var(--shadow-sm);
-    padding: 7px 10px;
+    background: var(--paper-2);
   }
 
   .page {

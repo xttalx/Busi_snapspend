@@ -167,8 +167,83 @@ function SnapspendTweaks({ tweaks, setTweak }) {
 
 }
 
-function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
+function HelpSupportModal({ open, onClose, session, userBusiness, toast }) {
+  const [name, setName] = React.useState(userBusiness?.owner || "");
+  const [email, setEmail] = React.useState(session?.user?.email || userBusiness?.email || "");
+  const [topic, setTopic] = React.useState("");
+  const [message, setMessage] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) return;
+    setName(userBusiness?.owner || "");
+    setEmail(session?.user?.email || userBusiness?.email || "");
+    setTopic("");
+    setMessage("");
+  }, [open, session, userBusiness]);
+
+  if (!open) return null;
+
+  const submit = (e) => {
+    e.preventDefault();
+    const supportEmail = window.SEED?.SUPPORT_EMAIL || "support@snapspend.app";
+    const subject = topic.trim() || "Snapspend support request";
+    const body = [
+      `Name: ${name.trim() || "—"}`,
+      `Email: ${email.trim() || "—"}`,
+      `Account: ${session?.user?.email || "—"}`,
+      "",
+      message.trim() || "(no message provided)",
+    ].join("\n");
+    const mailto = `mailto:${encodeURIComponent(supportEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+    toast("Opening your email app to send this to the Snapspend team.");
+    onClose();
+  };
+
+  return (
+    <>
+      <div className="modal-scrim" onClick={onClose}></div>
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <div className="kicker">Help & support</div>
+            <h3>Contact the app builder</h3>
+            <p className="modal-sub">Describe your issue and we will follow up by email.</p>
+          </div>
+          <button className="iconbtn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+        </div>
+        <form className="modal-body" onSubmit={submit}>
+          <div className="field">
+            <label>Your name</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Smith" />
+          </div>
+          <div className="field">
+            <label>Your email</label>
+            <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@studio.com" />
+          </div>
+          <div className="field">
+            <label>Topic</label>
+            <input className="input" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Billing, bug report, feature idea" />
+          </div>
+          <div className="field">
+            <label>Message</label>
+            <textarea className="textarea" required rows={5} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="What do you need help with?" />
+          </div>
+          <div className="modal-foot" style={{ padding: "0 0 4px", border: "none" }}>
+            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn primary">
+              <Icon name="send" size={13} /> Send request
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
+function Sidebar({ route, setRoute, userBusiness, session, onSignOut, toast }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [helpOpen, setHelpOpen] = React.useState(false);
   // The sidebar logo always shows the user's business name as the primary
   // mark, with "Snapspend" tucked underneath. If the user hasn't customised
   // the name (still says "Snapspend"), we collapse to a single wordmark to
@@ -218,7 +293,38 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
           )}
           </div>
         )}
+        <div className="sidebar-menu-footer">
+          <button
+            type="button"
+            className="nav-item"
+            onClick={() => {
+              setHelpOpen(true);
+              setMobileMenuOpen(false);
+            }}>
+            <Icon name="send" size={15} />
+            Help &amp; support
+          </button>
+          {onSignOut &&
+          <button
+            type="button"
+            className="nav-item sidebar-signout-mobile"
+            onClick={() => {
+              onSignOut();
+              setMobileMenuOpen(false);
+            }}>
+            <Icon name="external" size={13} />
+            Sign out
+          </button>}
+        </div>
       </div>
+
+      <HelpSupportModal
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        session={session}
+        userBusiness={userBusiness}
+        toast={toast}
+      />
 
       <div className="userchip">
         <div className="avatar">
@@ -230,7 +336,7 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut }) {
         </div>
       </div>
       {onSignOut &&
-      <button className="btn ghost sidebar-signout" onClick={onSignOut}>
+      <button className="btn ghost sidebar-signout sidebar-signout-desktop" onClick={onSignOut}>
           <Icon name="external" size={13} /> Sign out
         </button>}
     </aside>);
@@ -609,6 +715,7 @@ function App() {
         userBusiness={userBusiness}
         session={session}
         onSignOut={supabaseEnabled && session ? handleSignOut : null}
+        toast={toast}
       />
       <main className="page">
         <div className="page-head print-hide">
