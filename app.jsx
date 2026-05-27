@@ -38,6 +38,8 @@ const DEFAULT_USER_BUSINESS = {
   owner: "",
   email: "",
   address: "",
+  businessNo: "",
+  gstTaxId: "",
   country: "United States",
   currency: "USD ($)",
   terms: "Net 30",

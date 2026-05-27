@@ -5,6 +5,8 @@
     owner: "",
     email: "",
     address: "",
+    businessNo: "",
+    gstTaxId: "",
     country: "United States",
     currency: "USD ($)",
     terms: "Net 30",
@@ -107,7 +109,9 @@
   }
 
   async function ensureBusinessProfile(userId, profileResult) {
-    if (profileResult.data?.profile) return profileResult.data.profile;
+    if (profileResult.data?.profile) {
+      return { ...DEFAULT_USER_BUSINESS, ...profileResult.data.profile };
+    }
     await sb().from("business_profiles").upsert({
       user_id: userId,
       profile: DEFAULT_USER_BUSINESS,
