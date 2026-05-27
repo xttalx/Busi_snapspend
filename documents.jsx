@@ -16,14 +16,32 @@ window.fmtMoney = fmtMoney;
 window.fmtDate = fmtDate;
 
 async function downloadPreviewPdfFromElement(element, fileName) {
-  if (!window.jspdf?.jsPDF) {
-    throw new Error("PDF library not loaded.");
-  }
-  if (!window.html2canvas) {
-    throw new Error("PDF renderer missing. Refresh once and try again.");
-  }
   if (!element) {
     throw new Error("Preview document not found.");
+  }
+  if (window.html2pdf) {
+    const opts = {
+      margin: [0.35, 0.35, 0.35, 0.35],
+      filename: fileName,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      },
+      jsPDF: {
+        unit: "in",
+        format: "letter",
+        orientation: "portrait",
+      },
+      pagebreak: { mode: ["css", "legacy"] },
+    };
+    await window.html2pdf().set(opts).from(element).save();
+    return;
+  }
+
+  if (!window.jspdf?.jsPDF || !window.html2canvas) {
+    throw new Error("PDF libraries missing. Refresh once and try again.");
   }
 
   const { jsPDF } = window.jspdf;
@@ -31,21 +49,14 @@ async function downloadPreviewPdfFromElement(element, fileName) {
   const margin = 0.35;
   const contentWidth = 8.5 - margin * 2;
   const windowWidth = Math.max(element.scrollWidth || 0, element.clientWidth || 0, 900);
-
   await doc.html(element, {
     x: margin,
     y: margin,
     width: contentWidth,
     windowWidth,
     autoPaging: "text",
-    margin: [0, 0, 0, 0],
-    html2canvas: {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-    },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
   });
-
   doc.save(fileName);
 }
 
