@@ -4,6 +4,12 @@ window.SEED = (() => {
   const BRAND_DOMAIN = "martenbooks.com";
   const SUPPORT_EMAIL = "support@martenbooks.com";
 
+  const BILLING = {
+    currency: "CAD",
+    proMonthly: 39.39,
+    payPerDownload: 11.39,
+  };
+
   const CATEGORIES = [
     { id: "software",  name: "Software",   color: "#b8442a" },
     { id: "travel",    name: "Travel",     color: "#2f5a3e" },
@@ -161,6 +167,7 @@ window.SEED = (() => {
     BRAND_NAME,
     BRAND_DOMAIN,
     SUPPORT_EMAIL,
+    BILLING,
     CATEGORIES,
     expenses,
     clients,

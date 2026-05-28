@@ -86,10 +86,12 @@ function InvoiceEditor({ invoice, clients, onChange }) {
 
 }
 
-function InvoicesScreen({ state, dispatch, business, toast, params }) {
+function InvoicesScreen({ state, dispatch, business, toast, params, billingStatus, refreshBilling }) {
   const [selected, setSelected] = useState2(params?.focusId || null);
   const [mode, setMode] = useState2("preview"); // edit | preview
   const invoicePreviewRef = useRef(null);
+  const [paywall, setPaywall] = useState2({ open: false, checkoutUrl: null });
+  const [paywallBusy, setPaywallBusy] = useState2(false);
 
   const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
   const client = inv ? state.clients.find((c) => c.id === inv.clientId) : null;
@@ -109,23 +111,54 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
     };
   };
 
+  const runInvoicePdfDownload = async () => {
+    if (mode !== "preview") {
+      setMode("preview");
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    }
+    await window.downloadInvoicePdf({ invoice: inv, element: invoicePreviewRef.current });
+    toast("Invoice PDF downloaded.");
+    if (refreshBilling) refreshBilling();
+  };
+
   const downloadCurrentInvoicePdf = async () => {
     if (!inv || !client) {
       toast("Select an invoice with a client first.");
       return;
     }
     try {
-      if (mode !== "preview") {
-        setMode("preview");
-        await new Promise((resolve) => setTimeout(resolve, 220));
+      if (!window.MartenBilling) {
+        await runInvoicePdfDownload();
+        return;
       }
-      await window.downloadInvoicePdf({ invoice: inv, element: invoicePreviewRef.current });
-      toast("Invoice PDF downloaded.");
+      const auth = await window.MartenBilling.authorizeDownload("invoice", inv.id);
+      if (auth.allowed) {
+        await runInvoicePdfDownload();
+        return;
+      }
+      if (auth.needsCardSetup) {
+        toast(auth.message || "Add a payment method in Settings first.");
+        return;
+      }
+      if (auth.checkoutUrl) {
+        setPaywall({ open: true, checkoutUrl: auth.checkoutUrl });
+        return;
+      }
+      toast("Could not authorize download.");
     } catch (error) {
       toast(error?.message || "Could not download invoice PDF.");
       console.error(error);
     }
   };
+
+  React.useEffect(() => {
+    if (!params?.billingDownload || !inv?.id) return;
+    const pending = window.__pendingBillingDownload;
+    if (pending && pending.documentId === inv.id && pending.documentType === "invoice") {
+      delete window.__pendingBillingDownload;
+      downloadCurrentInvoicePdf();
+    }
+  }, [params?.billingDownload, inv?.id]);
 
   const createNew = () => {
     if (!state.clients.length) {
@@ -177,79 +210,114 @@ function InvoicesScreen({ state, dispatch, business, toast, params }) {
 
   return (
     <>
-      <div className="toolbar">
-        <div className="left">
-          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-            {state.invoices.length} invoices
-          </span>
-        </div>
-        <div className="right">
-          <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
-            <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
-            onClick={() => setMode("preview")}
-            style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
-              Preview
-            </button>
-            <button className={"btn sm " + (mode === "edit" ? "" : "ghost")}
-            onClick={() => setMode("edit")}
-            style={mode === "edit" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
-              Edit
+      <div className="doc-screen">
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              {state.invoices.length} invoices
+            </span>
+          </div>
+          <div className="right">
+            <div className="doc-toolbar-actions">
+              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+                <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
+                onClick={() => setMode("preview")}
+                style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Preview
+                </button>
+                <button className={"btn sm " + (mode === "edit" ? "" : "ghost")}
+                onClick={() => setMode("edit")}
+                style={mode === "edit" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Edit
+                </button>
+              </div>
+              <button className="btn primary" onClick={downloadCurrentInvoicePdf}>
+                <Icon name="download" size={13} /> Download PDF
+              </button>
+            </div>
+            <button className="btn primary" onClick={createNew} style={{ marginLeft: 6 }}>
+              <Icon name="plus" size={13} /> New invoice
             </button>
           </div>
-          <button className="btn primary" onClick={downloadCurrentInvoicePdf}>
-            <Icon name="download" size={13} /> Download PDF
-          </button>
-          <button className="btn primary" onClick={createNew} style={{ marginLeft: 6 }}>
-            <Icon name="plus" size={13} /> New invoice
-          </button>
+        </div>
+
+        <div className="two-col doc-two-col" style={{ fontFamily: "Arial" }}>
+          <div className="list-card doc-controls-col">
+            {state.invoices.map((i) => {
+              const c = state.clients.find((cl) => cl.id === i.clientId);
+              const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
+              return (
+                <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
+                  <span className="name" style={{ fontFamily: "Arial" }}>{c?.name || "Unknown client"}</span>
+                  <span className="amount">{fmtMoney(total)}</span>
+                  <span className="meta">{i.number} · {fmtDate(i.date)}</span>
+                  <select
+                    className={"status status-select " + i.status}
+                    value={i.status}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(i, { ...i, status: next }) });
+                      toast(`${i.number} → ${next.charAt(0).toUpperCase() + next.slice(1)}`);
+                    }}>
+                    <option value="draft">Draft</option>
+                    <option value="due">Due</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                  </select>
+                </div>);
+
+            })}
+          </div>
+
+          <div className="doc-preview-col">
+            <div className="doc-preview-actions mobile-doc-actions">
+              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+                <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
+                onClick={() => setMode("preview")}
+                style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Preview
+                </button>
+                <button className={"btn sm " + (mode === "edit" ? "" : "ghost")}
+                onClick={() => setMode("edit")}
+                style={mode === "edit" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Edit
+                </button>
+              </div>
+              <button className="btn primary" onClick={downloadCurrentInvoicePdf}>
+                <Icon name="download" size={13} /> Download PDF
+              </button>
+            </div>
+
+            {mode === "edit" ?
+            <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)" }}>
+                <InvoiceEditor
+                invoice={inv}
+                clients={state.clients}
+                onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, patched) })} />
+              
+              </div> :
+
+            <div ref={invoicePreviewRef}>
+              <InvoiceDocument invoice={inv} client={client} business={business} />
+            </div>
+            }
+          </div>
         </div>
       </div>
 
-      <div className="two-col doc-two-col" style={{ fontFamily: "Arial" }}>
-        <div className="list-card doc-controls-col">
-          {state.invoices.map((i) => {
-            const c = state.clients.find((cl) => cl.id === i.clientId);
-            const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
-            return (
-              <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
-                <span className="name" style={{ fontFamily: "Arial" }}>{c?.name || "Unknown client"}</span>
-                <span className="amount">{fmtMoney(total)}</span>
-                <span className="meta">{i.number} · {fmtDate(i.date)}</span>
-                <select
-                  className={"status status-select " + i.status}
-                  value={i.status}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(i, { ...i, status: next }) });
-                    toast(`${i.number} → ${next.charAt(0).toUpperCase() + next.slice(1)}`);
-                  }}>
-                  <option value="draft">Draft</option>
-                  <option value="due">Due</option>
-                  <option value="paid">Paid</option>
-                  <option value="overdue">Overdue</option>
-                </select>
-              </div>);
-
-          })}
-        </div>
-
-        <div className="doc-preview-col">
-          {mode === "edit" ?
-          <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)" }}>
-              <InvoiceEditor
-              invoice={inv}
-              clients={state.clients}
-              onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, patched) })} />
-            
-            </div> :
-
-          <div ref={invoicePreviewRef}>
-            <InvoiceDocument invoice={inv} client={client} business={business} />
-          </div>
-          }
-        </div>
-      </div>
+      <PaywallModal
+        open={paywall.open}
+        onClose={() => setPaywall({ open: false, checkoutUrl: null })}
+        documentType="invoice"
+        documentId={inv?.id}
+        busy={paywallBusy}
+        onProceed={() => {
+          if (!paywall.checkoutUrl) return;
+          setPaywallBusy(true);
+          window.location.href = paywall.checkoutUrl;
+        }}
+      />
     </>);
 
 }
@@ -577,7 +645,10 @@ function BillsScreen({ state, dispatch, toast, userId, params }) {
 window.BillsScreen = BillsScreen;
 
 /* ---------- Paystubs ---------- */
-function PaystubsScreen({ state, dispatch, business, toast, params }) {
+function PaystubsScreen({ state, dispatch, business, toast, params, billingStatus, refreshBilling }) {
+  const [paywall, setPaywall] = useState2({ open: false, checkoutUrl: null });
+  const [paywallBusy, setPaywallBusy] = useState2(false);
+
   if (!state.employees.length) {
     return (
       <>
@@ -714,6 +785,12 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
   const canDownloadStub = generated || employeeStubs.length > 0;
   const currentStub = canDownloadStub ? stub : null;
 
+  const runPaystubPdfDownload = async () => {
+    await window.downloadPaystubPdf({ stub: currentStub, element: paystubPreviewRef.current });
+    toast("Pay statement PDF downloaded.");
+    if (refreshBilling) refreshBilling();
+  };
+
   const downloadCurrentPaystubPdf = async () => {
     if (!currentStub) {
       toast("Generate or select a pay statement first.");
@@ -725,37 +802,65 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
       return;
     }
     try {
-      await window.downloadPaystubPdf({ stub: currentStub, element: paystubPreviewRef.current });
-      toast("Pay statement PDF downloaded.");
+      if (!window.MartenBilling) {
+        await runPaystubPdfDownload();
+        return;
+      }
+      const auth = await window.MartenBilling.authorizeDownload("paystub", currentStub.id);
+      if (auth.allowed) {
+        await runPaystubPdfDownload();
+        return;
+      }
+      if (auth.needsCardSetup) {
+        toast(auth.message || "Add a payment method in Settings first.");
+        return;
+      }
+      if (auth.checkoutUrl) {
+        setPaywall({ open: true, checkoutUrl: auth.checkoutUrl });
+        return;
+      }
+      toast("Could not authorize download.");
     } catch (error) {
       toast(error?.message || "Could not download pay statement PDF.");
       console.error(error);
     }
   };
 
+  React.useEffect(() => {
+    if (!params?.billingDownload || !currentStub?.id) return;
+    const pending = window.__pendingBillingDownload;
+    if (pending && pending.documentId === currentStub.id && pending.documentType === "paystub") {
+      delete window.__pendingBillingDownload;
+      downloadCurrentPaystubPdf();
+    }
+  }, [params?.billingDownload, currentStub?.id]);
+
   return (
     <>
-      <div className="toolbar">
-        <div className="left">
-          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-            {filteredPaystubs.length} statements on file
-          </span>
-          <button className="btn sm ghost" onClick={() => setPaystubMonth("")}>All months</button>
-          <input
-            className="input mono"
-            type="month"
-            value={paystubMonth}
-            onChange={(e) => setPaystubMonth(e.target.value)}
-            style={{ width: 154 }} />
+      <div className="doc-screen">
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              {filteredPaystubs.length} statements on file
+            </span>
+            <button className="btn sm ghost" onClick={() => setPaystubMonth("")}>All months</button>
+            <input
+              className="input mono"
+              type="month"
+              value={paystubMonth}
+              onChange={(e) => setPaystubMonth(e.target.value)}
+              style={{ width: 154 }} />
+          </div>
+          <div className="right">
+            <div className="doc-toolbar-actions">
+              <button className="btn primary" onClick={downloadCurrentPaystubPdf} disabled={!canDownloadStub} style={{ opacity: canDownloadStub ? 1 : 0.5 }}>
+                <Icon name="download" size={13} /> Download PDF
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="right">
-          <button className="btn primary" onClick={downloadCurrentPaystubPdf} disabled={!canDownloadStub} style={{ opacity: canDownloadStub ? 1 : 0.5 }}>
-            <Icon name="download" size={13} /> Download PDF
-          </button>
-        </div>
-      </div>
 
-      <div className="two-col doc-two-col">
+        <div className="two-col doc-two-col">
         <div className="doc-controls-col" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 22, background: "var(--paper)" }}>
             <div className="kicker" style={{ marginBottom: 12 }}>Generate statement</div>
@@ -834,6 +939,11 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
         </div>
 
         <div className="doc-preview-col">
+          <div className="doc-preview-actions mobile-doc-actions">
+            <button className="btn primary" onClick={downloadCurrentPaystubPdf} disabled={!canDownloadStub} style={{ opacity: canDownloadStub ? 1 : 0.5 }}>
+              <Icon name="download" size={13} /> Download PDF
+            </button>
+          </div>
           {generated || employeeStubs.length > 0 ?
           <div ref={paystubPreviewRef}>
               <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} />
@@ -848,6 +958,20 @@ function PaystubsScreen({ state, dispatch, business, toast, params }) {
           }
         </div>
       </div>
+      </div>
+
+      <PaywallModal
+        open={paywall.open}
+        onClose={() => setPaywall({ open: false, checkoutUrl: null })}
+        documentType="paystub"
+        documentId={currentStub?.id}
+        busy={paywallBusy}
+        onProceed={() => {
+          if (!paywall.checkoutUrl) return;
+          setPaywallBusy(true);
+          window.location.href = paywall.checkoutUrl;
+        }}
+      />
 
       {/* Confirmation modal — shown before each paystub is created. */}
       {confirmOpen &&
@@ -1455,7 +1579,7 @@ function ReportsScreen({ state }) {
 window.ReportsScreen = ReportsScreen;
 
 /* ---------- Settings ---------- */
-function SettingsScreen({ business, setBusiness, toast }) {
+function SettingsScreen({ business, setBusiness, toast, billingStatus, refreshBilling }) {
   const update = (patch) => setBusiness({ ...business, ...patch });
   const COUNTRIES = window.SEED.COUNTRY_TAX_RATES || {};
   const countryInfo = COUNTRIES[business.country] || COUNTRIES["United States"];
@@ -1576,6 +1700,22 @@ function SettingsScreen({ business, setBusiness, toast }) {
               </select>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="settings-grid">
+        <div>
+          <h3>Billing &amp; plan</h3>
+          <p className="desc">
+            Manage your Pro subscription, payment method, and pay-per-download billing via Lemon Squeezy.
+          </p>
+        </div>
+        <div className="form">
+          <BillingSettings
+            billingStatus={billingStatus}
+            onRefresh={refreshBilling}
+            toast={toast}
+          />
         </div>
       </div>
 

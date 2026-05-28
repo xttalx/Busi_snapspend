@@ -383,8 +383,20 @@ function App() {
   const [params, setParams] = useStateApp({});
   const [toastMsg, setToastMsg] = useStateApp(null);
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [billingStatus, setBillingStatus] = useStateApp(null);
+  const [billingLoading, setBillingLoading] = useStateApp(false);
 
   const userBusiness = state.userBusiness;
+
+  const refreshBilling = React.useCallback(async () => {
+    if (!userId || !window.MartenBilling) return;
+    try {
+      const status = await window.MartenBilling.getStatus();
+      setBillingStatus(status);
+    } catch (err) {
+      console.error("Billing status error:", err);
+    }
+  }, [userId]);
 
   useEffectApp(() => {
     if (!supabaseEnabled) return;
@@ -418,6 +430,39 @@ function App() {
       });
     return () => { active = false; };
   }, [supabaseEnabled, userId]);
+
+  useEffectApp(() => {
+    if (!userId || !window.MartenBilling) return;
+    let active = true;
+    setBillingLoading(true);
+    refreshBilling().finally(() => {
+      if (active) setBillingLoading(false);
+    });
+    return () => { active = false; };
+  }, [userId, refreshBilling]);
+
+  useEffectApp(() => {
+    const q = new URLSearchParams(window.location.search);
+    const billingEvent = q.get("billing");
+    if (!billingEvent || !userId) return;
+
+    const docType = q.get("document_type");
+    const docId = q.get("document_id");
+
+    if (billingEvent === "download_ready" && docType && docId) {
+      window.__pendingBillingDownload = { documentType: docType, documentId: docId };
+      setRoute(docType === "paystub" ? "paystubs" : "invoices");
+      setParams({ billingDownload: true, focusId: docId });
+      toast("Payment received — starting your download…");
+    } else if (billingEvent === "subscription_success") {
+      toast("Pro subscription active. Unlimited downloads enabled.");
+    } else if (billingEvent === "card_setup_success") {
+      toast("Payment method saved. You can download documents now.");
+    }
+
+    window.history.replaceState({}, "", window.location.pathname || "/");
+    refreshBilling();
+  }, [userId]);
 
   const handleSignOut = async () => {
     await window.MartenAPI.signOut();
@@ -696,18 +741,31 @@ function App() {
   }
   if (authLoading) return <AppLoading label="Checking session…" />;
   if (!session) return <LandingPage />;
-  if (dataLoading) return <AppLoading label="Loading your workspace…" />;
+  if (dataLoading || billingLoading) return <AppLoading label="Loading your workspace…" />;
+  if (
+    window.MartenBilling &&
+    billingStatus &&
+    window.MartenBilling.needsPaymentSetup(billingStatus)
+  ) {
+    return (
+      <BillingOnboarding
+        email={session.user?.email}
+        toast={toast}
+        onComplete={() => refreshBilling()}
+      />
+    );
+  }
 
   let screen = null;
   if (route === "dashboard") screen = <Dashboard state={state} go={go} />;else
   if (route === "expenses") screen = <Expenses state={state} dispatch={persistDispatch} toast={toast} />;else
-  if (route === "invoices") screen = <InvoicesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "invoices") screen = <InvoicesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} billingStatus={billingStatus} refreshBilling={refreshBilling} />;else
   if (route === "bills") screen = <BillsScreen state={state} dispatch={persistDispatch} toast={toast} userId={userId} params={params} />;else
-  if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} billingStatus={billingStatus} refreshBilling={refreshBilling} />;else
   if (route === "employees") screen = <EmployeesScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "clients") screen = <ClientsScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "reports") screen = <ReportsScreen state={state} />;else
-  if (route === "settings") screen = <SettingsScreen business={userBusiness} setBusiness={setUserBusiness} toast={toast} />;else
+  if (route === "settings") screen = <SettingsScreen business={userBusiness} setBusiness={setUserBusiness} toast={toast} billingStatus={billingStatus} refreshBilling={refreshBilling} />;else
   if (route === "transactions") screen = <TransactionHistoryScreen state={state} go={go} />;
 
   return (

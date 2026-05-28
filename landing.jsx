@@ -1,6 +1,7 @@
 /* Marketing landing — sign in / create account + product story */
 function LandingPage({ setupRequired = false }) {
   const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
+  const pricing = window.SEED?.BILLING || { payPerDownload: 11.39, proMonthly: 39.39 };
   const features = [
     {
       icon: "expense",
@@ -100,6 +101,21 @@ function LandingPage({ setupRequired = false }) {
           />
         </aside>
       </div>
+
+      <section className="landing-pricing" id="pricing" aria-labelledby="landing-pricing-heading">
+        <div className="landing-features-head">
+          <p className="landing-kicker">Pricing</p>
+          <h2 id="landing-pricing-heading">Simple plans for solo studios</h2>
+          <p className="landing-features-lead">
+            Pro includes unlimited PDF exports. Pay-per-download is {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.payPerDownload) : `$${pricing.payPerDownload}`} per invoice or paystub — card required at signup for both.
+          </p>
+        </div>
+        {window.PricingCards && (
+          <PricingCards compact onSelectPlan={() => {
+            document.querySelector(".landing-auth-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }} />
+        )}
+      </section>
 
       <section className="landing-features" aria-labelledby="landing-features-heading">
         <div className="landing-features-head">
