@@ -689,10 +689,10 @@ function App() {
   const dashboardName = (userBusiness?.name || "Your business").trim() || "Your business";
 
   if (!supabaseEnabled) {
-    return <AuthScreen setupRequired />;
+    return <LandingPage setupRequired />;
   }
   if (authLoading) return <AppLoading label="Checking session…" />;
-  if (!session) return <AuthScreen />;
+  if (!session) return <LandingPage />;
   if (dataLoading) return <AppLoading label="Loading your workspace…" />;
 
   let screen = null;

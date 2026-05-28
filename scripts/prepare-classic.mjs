@@ -13,6 +13,7 @@ const copyList = [
   "app.jsx",
   "api.js",
   "auth.jsx",
+  "landing.jsx",
   "data.js",
   "documents.jsx",
   "icons.jsx",
