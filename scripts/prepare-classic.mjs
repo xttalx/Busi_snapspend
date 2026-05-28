@@ -1,5 +1,5 @@
 /**
- * Syncs the classic Snapspend bundle into public/classic/ for PWA + Vercel deploy.
+ * Syncs the classic Marten Bookkeeping bundle into public/classic/ for PWA + Vercel deploy.
  */
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";

@@ -1,5 +1,9 @@
-/* Sample seed data for Snapspend prototype. */
+/* Sample seed data for Marten Bookkeeping prototype. */
 window.SEED = (() => {
+  const BRAND_NAME = "Marten Bookkeeping";
+  const BRAND_DOMAIN = "martenbooks.com";
+  const SUPPORT_EMAIL = "support@martenbooks.com";
+
   const CATEGORIES = [
     { id: "software",  name: "Software",   color: "#b8442a" },
     { id: "travel",    name: "Travel",     color: "#2f5a3e" },
@@ -40,7 +44,7 @@ window.SEED = (() => {
         { desc: "Senior design",         sub: "Iteration & refinement",         qty: 12, rate: 175 },
       ],
       taxRate: 0,
-      notes: "Net 30. Wire transfer details on request. Thank you for partnering with Snapspend.",
+      notes: "Net 30. Wire transfer details on request. Thank you for partnering with Marten Bookkeeping.",
     },
     { id: "i2", number: "INV-0141", clientId: "c2", date: "2026-05-01", due: "2026-05-31", status: "paid",
       items: [
@@ -153,5 +157,17 @@ window.SEED = (() => {
     "Custom":               { taxRate: 0,      label: "Custom tax rate",                  currency: "USD ($)" },
   };
 
-  return { CATEGORIES, expenses, clients, invoices, employees, paystubs, COUNTRY_PRESETS, COUNTRY_TAX_RATES };
+  return {
+    BRAND_NAME,
+    BRAND_DOMAIN,
+    SUPPORT_EMAIL,
+    CATEGORIES,
+    expenses,
+    clients,
+    invoices,
+    employees,
+    paystubs,
+    COUNTRY_PRESETS,
+    COUNTRY_TAX_RATES,
+  };
 })();

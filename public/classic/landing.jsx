@@ -1,5 +1,6 @@
 /* Marketing landing — sign in / create account + product story */
 function LandingPage({ setupRequired = false }) {
+  const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
   const features = [
     {
       icon: "expense",
@@ -44,7 +45,7 @@ function LandingPage({ setupRequired = false }) {
     <div className="landing">
       <header className="landing-top">
         <div className="landing-brand">
-          Snapspend<span className="dot"></span>
+          {brand}<span className="dot"></span>
         </div>
         <p className="landing-eyebrow">Expense · invoice · payroll for the solo studio</p>
       </header>
@@ -56,7 +57,7 @@ function LandingPage({ setupRequired = false }) {
             Your books, invoices, and payroll — in one calm workspace.
           </h1>
           <p className="landing-lead">
-            Snapspend is a focused financial desk for freelancers and small creative businesses.
+            {brand} is a focused financial desk for freelancers and small creative businesses.
             Track what you spend, bill who you work with, pay your team, and keep everything
             organized without enterprise accounting software.
           </p>
@@ -140,7 +141,7 @@ function LandingPage({ setupRequired = false }) {
 
       <footer className="landing-footer">
         <span className="landing-footer-brand">
-          Snapspend<span className="dot"></span>
+          {brand}<span className="dot"></span>
         </span>
         <span>Expense, invoice &amp; payroll for the solo studio</span>
       </footer>

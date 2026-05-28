@@ -294,8 +294,8 @@ function BillAttachmentLink({ attachment }) {
         active = false;
       };
     }
-    if (attachment?.storagePath && window.SnapAPI?.isEnabled()) {
-      window.SnapAPI.getReceiptUrl(attachment.storagePath).
+    if (attachment?.storagePath && window.MartenAPI?.isEnabled()) {
+      window.MartenAPI.getReceiptUrl(attachment.storagePath).
       then((url) => {
         if (active) setHref(url);
       }).
@@ -417,8 +417,8 @@ function BillsScreen({ state, dispatch, toast, userId, params }) {
       statusHistory: [],
     };
     dispatch({ type: "ADD_BILL", bill });
-    if (userId && window.SnapAPI?.isEnabled() && bill.attachment?.dataUrl) {
-      window.SnapAPI.saveBill(userId, bill).
+    if (userId && window.MartenAPI?.isEnabled() && bill.attachment?.dataUrl) {
+      window.MartenAPI.saveBill(userId, bill).
       then((saved) => dispatch({ type: "UPDATE_BILL", bill: saved })).
       catch((err) => console.error("Bill attachment upload failed:", err));
     }
@@ -1476,7 +1476,7 @@ function SettingsScreen({ business, setBusiness, toast }) {
               placeholder="Your registered business name"
               onChange={(e) => update({ name: e.target.value })} />
             <span className="help">
-              Shown big in the sidebar with <b>Snapspend</b> tucked underneath.
+              Shown big in the sidebar with <b>Marten Bookkeeping</b> tucked underneath.
             </span>
           </div>
           <div className="field">

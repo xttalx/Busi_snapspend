@@ -93,7 +93,7 @@ export function InstallAppButton({ className = "" }: { className?: string }) {
             <path d="M5 21h14" />
           </svg>
         </span>
-        {busy ? "Installing…" : "Install Snapspend"}
+        {busy ? "Installing…" : "Install Marten Bookkeeping"}
       </button>
       {showIosHint && (
         <p className="install-ios-hint">

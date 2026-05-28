@@ -1,4 +1,4 @@
-/* Snapspend — root app */
+/* Marten Bookkeeping — root app */
 const { useReducer, useState: useStateApp, useEffect: useEffectApp } = React;
 
 const NAV = [
@@ -132,9 +132,9 @@ function escapeHtml(value) {
   replace(/'/g, "&#39;");
 }
 
-function SnapspendTweaks({ tweaks, setTweak }) {
+function MartenTweaks({ tweaks, setTweak }) {
   return (
-    <TweaksPanel title="Tweaks · Snapspend">
+    <TweaksPanel title={"Tweaks · " + (window.SEED?.BRAND_NAME || "Marten Bookkeeping")}>
       <TweakSection label="Visual direction" />
       <TweakRadio
         label="Treatment"
@@ -185,8 +185,9 @@ function HelpSupportModal({ open, onClose, session, userBusiness, toast }) {
 
   const submit = (e) => {
     e.preventDefault();
-    const supportEmail = window.SEED?.SUPPORT_EMAIL || "support@snapspend.app";
-    const subject = topic.trim() || "Snapspend support request";
+    const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
+    const supportEmail = window.SEED?.SUPPORT_EMAIL || "support@martenbooks.com";
+    const subject = topic.trim() || `${brand} support request`;
     const body = [
       `Name: ${name.trim() || "—"}`,
       `Email: ${email.trim() || "—"}`,
@@ -196,7 +197,7 @@ function HelpSupportModal({ open, onClose, session, userBusiness, toast }) {
     ].join("\n");
     const mailto = `mailto:${encodeURIComponent(supportEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
-    toast("Opening your email app to send this to the Snapspend team.");
+    toast(`Opening your email app to send this to the ${brand} team.`);
     onClose();
   };
 
@@ -244,12 +245,12 @@ function HelpSupportModal({ open, onClose, session, userBusiness, toast }) {
 function Sidebar({ route, setRoute, userBusiness, session, onSignOut, toast }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
-  // The sidebar logo always shows the user's business name as the primary
-  // mark, with "Snapspend" tucked underneath. If the user hasn't customised
-  // the name (still says "Snapspend"), we collapse to a single wordmark to
-  // avoid an awkward "Snapspend / SNAPSPEND" repeat.
-  const name = userBusiness && userBusiness.name || "Snapspend";
-  const customised = name.trim().toLowerCase() !== "snapspend";
+  // The sidebar logo shows the user's business name as the primary mark,
+  // with the product brand tucked underneath. If unchanged from the default brand,
+  // collapse to a single wordmark to avoid repeating the same name twice.
+  const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
+  const name = (userBusiness && userBusiness.name) || brand;
+  const customised = name.trim().toLowerCase() !== brand.trim().toLowerCase();
 
   return (
     <aside className="sidebar">
@@ -258,11 +259,11 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut, toast }) {
         <>
             <span className="wm-primary" title={name} style={{ fontWeight: "400" }}>{name}</span>
             <span className="dot"></span>
-            <span className="wm-sub">Snapspend</span>
+            <span className="wm-sub">{brand}</span>
           </> :
 
         <>
-            Snapspend<span className="dot"></span>
+            {brand}<span className="dot"></span>
           </>
         }
       </div>
@@ -347,7 +348,9 @@ function AppLoading({ label }) {
   return (
     <div className="auth-screen">
       <div className="auth-card auth-loading">
-        <div className="auth-brand">Snapspend<span className="dot"></span></div>
+        <div className="auth-brand">
+          {window.SEED?.BRAND_NAME || "Marten Bookkeeping"}<span className="dot"></span>
+        </div>
         <p className="auth-lead">{label || "Loading…"}</p>
       </div>
     </div>
@@ -360,7 +363,7 @@ function App() {
     ...EMPTY_WORKSPACE,
   });
 
-  const supabaseEnabled = window.SnapAPI && window.SnapAPI.isEnabled();
+  const supabaseEnabled = window.MartenAPI && window.MartenAPI.isEnabled();
   const [session, setSession] = useStateApp(null);
   const [authLoading, setAuthLoading] = useStateApp(supabaseEnabled);
   const [dataLoading, setDataLoading] = useStateApp(false);
@@ -371,7 +374,7 @@ function App() {
   const persistDispatch = React.useMemo(
     () =>
       supabaseEnabled && userId
-        ? window.SnapAPI.createPersistDispatch(dispatch, () => stateRef.current, userId)
+        ? window.MartenAPI.createPersistDispatch(dispatch, () => stateRef.current, userId)
         : dispatch,
     [supabaseEnabled, userId]
   );
@@ -386,13 +389,13 @@ function App() {
   useEffectApp(() => {
     if (!supabaseEnabled) return;
     let active = true;
-    window.SnapAPI.getSession().then(({ session: s }) => {
+    window.MartenAPI.getSession().then(({ session: s }) => {
       if (active) {
         setSession(s);
         setAuthLoading(false);
       }
     });
-    const { data: { subscription } } = window.SnapAPI.onAuthStateChange((s) => {
+    const { data: { subscription } } = window.MartenAPI.onAuthStateChange((s) => {
       if (active) setSession(s);
     });
     return () => {
@@ -405,7 +408,7 @@ function App() {
     if (!supabaseEnabled || !userId) return;
     let active = true;
     setDataLoading(true);
-    window.SnapAPI.fetchAllData(userId)
+    window.MartenAPI.fetchAllData(userId)
       .then((data) => {
         if (active) dispatch({ type: "HYDRATE", payload: data });
       })
@@ -417,7 +420,7 @@ function App() {
   }, [supabaseEnabled, userId]);
 
   const handleSignOut = async () => {
-    await window.SnapAPI.signOut();
+    await window.MartenAPI.signOut();
     dispatch({ type: "HYDRATE", payload: EMPTY_WORKSPACE });
   };
 
@@ -452,9 +455,9 @@ function App() {
         name: receipt.name || "receipt",
       };
     }
-    if (receipt.storagePath && window.SnapAPI?.isEnabled()) {
+    if (receipt.storagePath && window.MartenAPI?.isEnabled()) {
       try {
-        const url = await window.SnapAPI.getReceiptUrl(receipt.storagePath);
+        const url = await window.MartenAPI.getReceiptUrl(receipt.storagePath);
         return {
           url,
           isImage: (receipt.type || "").startsWith("image/"),
@@ -764,7 +767,7 @@ function App() {
         {screen}
       </main>
 
-      <SnapspendTweaks tweaks={tweaks} setTweak={setTweak} />
+      <MartenTweaks tweaks={tweaks} setTweak={setTweak} />
 
       {toastMsg &&
       <div className="toast">

@@ -298,9 +298,9 @@ function ReceiptViewer({ expense, onClose }) {
       setLoadingUrl(false);
       return;
     }
-    if (r.storagePath && window.SnapAPI?.isEnabled()) {
+    if (r.storagePath && window.MartenAPI?.isEnabled()) {
       setLoadingUrl(true);
-      window.SnapAPI.getReceiptUrl(r.storagePath)
+      window.MartenAPI.getReceiptUrl(r.storagePath)
         .then((url) => { if (active) setViewUrl(url); })
         .catch(() => { if (active) setViewUrl(null); })
         .finally(() => { if (active) setLoadingUrl(false); });

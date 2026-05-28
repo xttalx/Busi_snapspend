@@ -1,4 +1,4 @@
-/* Snapspend — editorial financial-publication aesthetic
+/* Marten Bookkeeping — editorial financial-publication aesthetic
    Direction tokens swap via [data-direction] on root.
    Accent swaps via [data-accent].
 */
@@ -1607,9 +1607,14 @@ input[type="number"] { -moz-appearance: textfield; }
 
 .auth-brand {
   font-family: var(--serif);
-  font-size: 28px;
+  font-size: clamp(22px, 4vw, 28px);
   letter-spacing: -0.02em;
+  line-height: 1.15;
   margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .auth-lead {
@@ -1757,12 +1762,21 @@ input[type="number"] { -moz-appearance: textfield; }
 .landing-brand,
 .landing-footer-brand {
   font-family: var(--serif);
-  font-size: 28px;
+  font-size: clamp(22px, 3.2vw, 28px);
   font-weight: 500;
   letter-spacing: -0.02em;
+  line-height: 1.15;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 6px;
+  max-width: 100%;
+}
+
+.wordmark:not(.stacked) {
+  flex-wrap: wrap;
+  line-height: 1.15;
+  font-size: clamp(18px, 2.4vw, 24px);
 }
 
 .landing-eyebrow {

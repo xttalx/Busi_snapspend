@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Snapspend",
-  "short_name": "Snapspend",
+  "name": "Marten Bookkeeping",
+  "short_name": "Marten Books",
   "description": "Expense, invoice, and payroll for the solo studio.",
   "lang": "en",
   "dir": "ltr",

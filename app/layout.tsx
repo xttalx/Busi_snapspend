@@ -1,19 +1,19 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://busi-snapspend.vercel.app").replace(/\/$/, "");
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://martenbooks.com").replace(/\/$/, "");
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Snapspend · Expense, invoice & payroll",
+  title: "Marten Bookkeeping · Expense, invoice & payroll",
   description:
     "Expense, invoice, and payroll for the solo studio. Log spending, send invoices, and run pay statements.",
-  applicationName: "Snapspend",
+  applicationName: "Marten Bookkeeping",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Snapspend",
+    title: "Marten Bookkeeping",
   },
   formatDetection: {
     telephone: false,
@@ -50,7 +50,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Snapspend" />
+        <meta name="apple-mobile-web-app-title" content="Marten Bookkeeping" />
         <meta name="msapplication-TileColor" content="#b8442a" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>

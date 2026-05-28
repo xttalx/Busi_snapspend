@@ -19,5 +19,5 @@
     return window.supabaseClient;
   }
 
-  window.SnapSupabase = { isConfigured, getClient };
+  window.MartenSupabase = { isConfigured, getClient };
 })();

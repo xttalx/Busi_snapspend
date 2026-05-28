@@ -16,11 +16,11 @@
   };
 
   function sb() {
-    return window.SnapSupabase.getClient();
+    return window.MartenSupabase.getClient();
   }
 
   function isEnabled() {
-    return window.SnapSupabase.isConfigured() && !!sb();
+    return window.MartenSupabase.isConfigured() && !!sb();
   }
 
   function rowToEntity(row) {
@@ -214,7 +214,7 @@
       dispatch(action);
       if (!isEnabled() || !userId) return;
       persistAction(userId, action, getState()).catch((err) => {
-        console.error("Snapspend sync failed:", err);
+        console.error("Marten Bookkeeping sync failed:", err);
       });
     };
   }
@@ -248,7 +248,7 @@
     if (error) throw error;
   }
 
-  window.SnapAPI = {
+  window.MartenAPI = {
     isEnabled,
     getSession,
     onAuthStateChange,

@@ -14,10 +14,10 @@ export function RegisterServiceWorker() {
         return;
       }
       if (!ctrlSeen || !navigator.serviceWorker.controller) return;
-      const last = window.sessionStorage.getItem("snapspend-sw-reload-at");
+      const last = window.sessionStorage.getItem("martenbooks-sw-reload-at");
       const now = Date.now();
       if (last && now - Number(last) < 2000) return;
-      window.sessionStorage.setItem("snapspend-sw-reload-at", String(now));
+      window.sessionStorage.setItem("martenbooks-sw-reload-at", String(now));
       window.location.reload();
     };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);

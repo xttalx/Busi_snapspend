@@ -21,9 +21,9 @@ function AuthForm({
     setBusy(true);
     try {
       if (mode === "signin") {
-        await window.SnapAPI.signIn(email.trim(), password);
+        await window.MartenAPI.signIn(email.trim(), password);
       } else {
-        const { session } = await window.SnapAPI.signUp(email.trim(), password);
+        const { session } = await window.MartenAPI.signUp(email.trim(), password);
         if (!session) {
           setMessage("Account created. Check your email to confirm, then sign in.");
           setMode("signin");
@@ -108,7 +108,7 @@ function AuthForm({
       {!setupRequired && (
         <p className="auth-footnote">
           {mode === "signin"
-            ? "New to Snapspend? Use the Create account tab above."
+            ? `New to ${window.SEED?.BRAND_NAME || "Marten Bookkeeping"}? Use the Create account tab above.`
             : "Already have an account? Use the Sign in tab above."}
         </p>
       )}
@@ -124,7 +124,7 @@ function AuthScreen({ setupRequired = false }) {
         title={setupRequired ? "Setup required" : undefined}
         lead={
           setupRequired
-            ? "Sign-in is required to use Snapspend. Cloud sync is not configured on this server yet."
+            ? `Sign-in is required to use ${window.SEED?.BRAND_NAME || "Marten Bookkeeping"}. Cloud sync is not configured on this server yet.`
             : undefined
         }
       />
