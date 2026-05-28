@@ -1,6 +1,7 @@
 /* Sample seed data for Marten Bookkeeping prototype. */
 window.SEED = (() => {
   const BRAND_NAME = "Marten Bookkeeping";
+  const BRAND_LOGO = "/icons/logo.png";
   const BRAND_DOMAIN = "martenbooks.com";
   const SUPPORT_EMAIL = "support@martenbooks.com";
 
@@ -165,6 +166,7 @@ window.SEED = (() => {
 
   return {
     BRAND_NAME,
+    BRAND_LOGO,
     BRAND_DOMAIN,
     SUPPORT_EMAIL,
     BILLING,

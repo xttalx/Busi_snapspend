@@ -50,4 +50,26 @@ function Icon({ name, size = 16, stroke = 1.4, ...rest }) {
   );
 }
 
+function BrandLogo({ size = 40, className = "", showName = false, name }) {
+  const brand = name || window.SEED?.BRAND_NAME || "Marten Bookkeeping";
+  const src = window.SEED?.BRAND_LOGO || "/icons/logo.png";
+  return (
+    <div
+      className={"brand-logo" + (className ? " " + className : "")}
+      style={{ "--logo-size": size + "px" }}
+    >
+      <img
+        className="brand-logo-img"
+        src={src}
+        alt={brand}
+        width={size}
+        height={size}
+        decoding="async"
+      />
+      {showName && <span className="brand-logo-text">{brand}</span>}
+    </div>
+  );
+}
+
 window.Icon = Icon;
+window.BrandLogo = BrandLogo;

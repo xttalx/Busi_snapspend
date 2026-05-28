@@ -2,6 +2,17 @@
 function LandingPage({ setupRequired = false }) {
   const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
   const pricing = window.SEED?.BILLING || { payPerDownload: 11.39, proMonthly: 39.39 };
+
+  React.useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("plan") === "pay_per_download") {
+      try { sessionStorage.setItem("signup_plan", "pay_per_download"); } catch (_e) {}
+      const panel = document.querySelector(".landing-auth-panel");
+      if (panel) {
+        setTimeout(() => panel.scrollIntoView({ behavior: "smooth", block: "center" }), 200);
+      }
+    }
+  }, []);
   const features = [
     {
       icon: "expense",
@@ -46,7 +57,7 @@ function LandingPage({ setupRequired = false }) {
     <div className="landing">
       <header className="landing-top">
         <div className="landing-brand">
-          {brand}<span className="dot"></span>
+          <BrandLogo size={44} showName name={brand} />
         </div>
         <p className="landing-eyebrow">Expense · invoice · payroll for the solo studio</p>
       </header>
@@ -95,7 +106,14 @@ function LandingPage({ setupRequired = false }) {
             lead={
               setupRequired
                 ? "Sign-in will be available once cloud sync is configured on this server."
-                : "Sign in or create a free account. Your data is saved securely in the cloud."
+                : (() => {
+                    try {
+                      if (sessionStorage.getItem("signup_plan") === "pay_per_download") {
+                        return "Create an account to build one invoice — pay per PDF download after preview.";
+                      }
+                    } catch (_e) {}
+                    return "Sign in or subscribe to Pro for the full workspace.";
+                  })()
             }
             compact
           />
@@ -105,16 +123,24 @@ function LandingPage({ setupRequired = false }) {
       <section className="landing-pricing" id="pricing" aria-labelledby="landing-pricing-heading">
         <div className="landing-features-head">
           <p className="landing-kicker">Pricing</p>
-          <h2 id="landing-pricing-heading">Simple plans for solo studios</h2>
+          <h2 id="landing-pricing-heading">Pro for your full studio</h2>
           <p className="landing-features-lead">
-            Pro includes unlimited PDF exports. Pay-per-download is {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.payPerDownload) : `$${pricing.payPerDownload}`} per invoice or paystub — card required at signup for both.
+            One plan for unlimited invoice and paystub downloads, plus the full expense and payroll workspace — {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.proMonthly) : `$${pricing.proMonthly}`} CAD per month.
           </p>
         </div>
         {window.PricingCards && (
-          <PricingCards compact onSelectPlan={() => {
-            document.querySelector(".landing-auth-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
-          }} />
+          <PricingCards
+            proOnly
+            onSelectPlan={() => {
+              try { sessionStorage.removeItem("signup_plan"); } catch (_e) {}
+              document.querySelector(".landing-auth-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+          />
         )}
+        <p className="landing-pay-per-download-link">
+          Just need one invoice?{" "}
+          <a href="/?plan=pay_per_download#auth">Pay {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.payPerDownload) : `$${pricing.payPerDownload}`} per download</a>
+        </p>
       </section>
 
       <section className="landing-features" aria-labelledby="landing-features-heading">
@@ -157,7 +183,7 @@ function LandingPage({ setupRequired = false }) {
 
       <footer className="landing-footer">
         <span className="landing-footer-brand">
-          {brand}<span className="dot"></span>
+          <BrandLogo size={32} showName name={brand} />
         </span>
         <span>Expense, invoice &amp; payroll for the solo studio</span>
       </footer>

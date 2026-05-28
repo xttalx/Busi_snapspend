@@ -257,14 +257,12 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut, toast }) {
       <div className={"wordmark " + (customised ? "stacked" : "")}>
         {customised ?
         <>
+            <BrandLogo size={40} className="wordmark-logo" />
             <span className="wm-primary" title={name} style={{ fontWeight: "400" }}>{name}</span>
-            <span className="dot"></span>
             <span className="wm-sub">{brand}</span>
           </> :
 
-        <>
-            {brand}<span className="dot"></span>
-          </>
+        <BrandLogo size={48} />
         }
       </div>
 
@@ -349,7 +347,7 @@ function AppLoading({ label }) {
     <div className="auth-screen">
       <div className="auth-card auth-loading">
         <div className="auth-brand">
-          {window.SEED?.BRAND_NAME || "Marten Bookkeeping"}<span className="dot"></span>
+          <BrandLogo size={56} />
         </div>
         <p className="auth-lead">{label || "Loading…"}</p>
       </div>
@@ -451,13 +449,16 @@ function App() {
 
     if (billingEvent === "download_ready" && docType && docId) {
       window.__pendingBillingDownload = { documentType: docType, documentId: docId };
-      setRoute(docType === "paystub" ? "paystubs" : "invoices");
-      setParams({ billingDownload: true, focusId: docId });
+      if (docType === "paystub") {
+        setRoute("paystubs");
+      } else {
+        setParams({ billingDownload: true, focusId: docId || "lite-invoice" });
+      }
       toast("Payment received — starting your download…");
     } else if (billingEvent === "subscription_success") {
       toast("Pro subscription active. Unlimited downloads enabled.");
     } else if (billingEvent === "card_setup_success") {
-      toast("Payment method saved. You can download documents now.");
+      toast("Payment method saved. You can create and download invoices now.");
     }
 
     window.history.replaceState({}, "", window.location.pathname || "/");
@@ -742,7 +743,27 @@ function App() {
   if (authLoading) return <AppLoading label="Checking session…" />;
   if (!session) return <LandingPage />;
   if (dataLoading || billingLoading) return <AppLoading label="Loading your workspace…" />;
+
+  const signupPlan = (() => {
+    try { return sessionStorage.getItem("signup_plan"); } catch (_e) { return null; }
+  })();
+  const isPayPerDownload =
+    window.MartenBilling &&
+    billingStatus &&
+    !billingStatus.proActive &&
+    (billingStatus.plan === "pay_per_download" || signupPlan === "pay_per_download");
+
+  if (isPayPerDownload && window.MartenBilling?.needsPaymentSetup(billingStatus)) {
+    return (
+      <PayPerDownloadSetup
+        email={session.user?.email}
+        toast={toast}
+      />
+    );
+  }
+
   if (
+    !isPayPerDownload &&
     window.MartenBilling &&
     billingStatus &&
     window.MartenBilling.needsPaymentSetup(billingStatus)
@@ -752,6 +773,23 @@ function App() {
         email={session.user?.email}
         toast={toast}
         onComplete={() => refreshBilling()}
+        proOnly
+      />
+    );
+  }
+
+  if (isPayPerDownload && billingStatus?.paymentMethodOnFile) {
+    try { sessionStorage.removeItem("signup_plan"); } catch (_e) {}
+    return (
+      <InvoiceLiteScreen
+        state={state}
+        dispatch={persistDispatch}
+        business={userBusiness}
+        toast={toast}
+        billingStatus={billingStatus}
+        refreshBilling={refreshBilling}
+        params={params}
+        onSignOut={handleSignOut}
       />
     );
   }

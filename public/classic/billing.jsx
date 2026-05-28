@@ -78,10 +78,40 @@
 
   window.MartenBilling = MartenBilling;
 
+  function isPayPerDownloadUser(status) {
+    return Boolean(status && !status.proActive && status.plan === "pay_per_download");
+  }
+
+  MartenBilling.isPayPerDownloadUser = isPayPerDownloadUser;
+
   /* ---------- Pricing cards (landing + upgrade) ---------- */
-  function PricingCards({ onSelectPlan, compact = false, currentPlan = null }) {
+  function PricingCards({ onSelectPlan, compact = false, currentPlan = null, proOnly = false }) {
     const proPrice = MartenBilling.formatMoney(PRICING.proMonthly);
     const dlPrice = MartenBilling.formatMoney(PRICING.payPerDownload);
+
+    if (proOnly) {
+      return (
+        <div className="pricing-grid pricing-grid-single">
+          <article className={"pricing-card pricing-card-featured " + (currentPlan === "pro" ? "current" : "")}>
+            <p className="pricing-kicker">Pro plan</p>
+            <h3>Pro Monthly</h3>
+            <p className="pricing-amount">
+              {proPrice}<span>/month</span>
+            </p>
+            <ul className="pricing-features">
+              <li><Icon name="check" size={14} /> Unlimited invoice &amp; paystub downloads</li>
+              <li><Icon name="check" size={14} /> Full workspace — expenses, payroll, reports</li>
+              <li><Icon name="check" size={14} /> Cancel anytime from Settings</li>
+            </ul>
+            {onSelectPlan && (
+              <button type="button" className="btn primary pricing-cta" onClick={() => onSelectPlan("pro")}>
+                {currentPlan === "pro" ? "Current plan" : "Get started with Pro"}
+              </button>
+            )}
+          </article>
+        </div>
+      );
+    }
 
     return (
       <div className={"pricing-grid " + (compact ? "compact" : "")}>
@@ -208,7 +238,7 @@
   }
 
   /* ---------- Post-signup: card required ---------- */
-  function BillingOnboarding({ email, onComplete, toast }) {
+  function BillingOnboarding({ email, onComplete, toast, proOnly = true }) {
     const [busy, setBusy] = React.useState(null);
 
     const start = async (plan) => {
@@ -227,12 +257,12 @@
       <div className="billing-onboarding">
         <div className="billing-onboarding-inner">
           <p className="landing-kicker">One more step</p>
-          <h1>Add your payment method</h1>
+          <h1>Subscribe to Pro</h1>
           <p className="billing-onboarding-lead">
-            Choose how you&apos;d like to pay. A card is required for all accounts — even pay-per-download users.
+            Add your card to unlock the full workspace with unlimited PDF downloads.
             {email ? <> Signed in as <b>{email}</b>.</> : null}
           </p>
-          <PricingCards onSelectPlan={start} currentPlan={null} />
+          <PricingCards onSelectPlan={start} currentPlan={null} proOnly={proOnly} />
           <p className="auth-footnote">
             Payments are processed securely by Lemon Squeezy. You can change or cancel your plan in Settings.
           </p>
