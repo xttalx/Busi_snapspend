@@ -27,13 +27,6 @@ function AuthForm({
         if (!session) {
           setMessage("Account created. Check your email to confirm, then sign in.");
           setMode("signin");
-        } else {
-          try {
-            const q = new URLSearchParams(window.location.search);
-            if (q.get("plan") === "pay_per_download") {
-              sessionStorage.setItem("signup_plan", "pay_per_download");
-            }
-          } catch (_e) {}
         }
       }
     } catch (err) {

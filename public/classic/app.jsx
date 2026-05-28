@@ -744,26 +744,7 @@ function App() {
   if (!session) return <LandingPage />;
   if (dataLoading || billingLoading) return <AppLoading label="Loading your workspace…" />;
 
-  const signupPlan = (() => {
-    try { return sessionStorage.getItem("signup_plan"); } catch (_e) { return null; }
-  })();
-  const isPayPerDownload =
-    window.MartenBilling &&
-    billingStatus &&
-    !billingStatus.proActive &&
-    (billingStatus.plan === "pay_per_download" || signupPlan === "pay_per_download");
-
-  if (isPayPerDownload && window.MartenBilling?.needsPaymentSetup(billingStatus)) {
-    return (
-      <PayPerDownloadSetup
-        email={session.user?.email}
-        toast={toast}
-      />
-    );
-  }
-
   if (
-    !isPayPerDownload &&
     window.MartenBilling &&
     billingStatus &&
     window.MartenBilling.needsPaymentSetup(billingStatus)
@@ -774,22 +755,6 @@ function App() {
         toast={toast}
         onComplete={() => refreshBilling()}
         proOnly
-      />
-    );
-  }
-
-  if (isPayPerDownload && billingStatus?.paymentMethodOnFile) {
-    try { sessionStorage.removeItem("signup_plan"); } catch (_e) {}
-    return (
-      <InvoiceLiteScreen
-        state={state}
-        dispatch={persistDispatch}
-        business={userBusiness}
-        toast={toast}
-        billingStatus={billingStatus}
-        refreshBilling={refreshBilling}
-        params={params}
-        onSignOut={handleSignOut}
       />
     );
   }
@@ -875,4 +840,4 @@ function App() {
 
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+window.App = App;

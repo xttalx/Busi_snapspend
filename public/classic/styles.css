@@ -2262,6 +2262,14 @@ input[type="number"] { -moz-appearance: textfield; }
   color: var(--ink-3);
 }
 
+.invoice-lite-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+}
+
 .invoice-lite-header-actions {
   display: flex;
   gap: 8px;

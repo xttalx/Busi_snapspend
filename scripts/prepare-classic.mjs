@@ -16,6 +16,7 @@ const copyList = [
   "landing.jsx",
   "billing.jsx",
   "invoice-lite.jsx",
+  "invoice-guest.jsx",
   "data.js",
   "documents.jsx",
   "icons.jsx",

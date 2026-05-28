@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: "/", destination: "/classic/index.html" },
+      { source: "/invoice", destination: "/classic/index.html" },
       { source: "/classic", destination: "/classic/index.html" },
     ];
   },

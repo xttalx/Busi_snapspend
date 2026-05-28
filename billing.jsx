@@ -59,6 +59,26 @@
       });
     },
 
+    /** Guest invoice generator — no sign-in */
+    async guestCheckout(documentId, guestToken, email) {
+      const res = await fetch("/api/billing/guest-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId, guestToken, email }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not start checkout.");
+      return json;
+    },
+
+    async guestDownloadStatus(guestToken, documentId) {
+      const qs = new URLSearchParams({ guest_token: guestToken, document_id: documentId });
+      const res = await fetch(`/api/billing/guest-status?${qs}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not verify payment.");
+      return json;
+    },
+
     formatMoney(amount) {
       return new Intl.NumberFormat("en-CA", {
         style: "currency",

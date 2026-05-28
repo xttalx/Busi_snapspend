@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { markGuestSessionPaid } from "./guest";
 type WebhookPayload = {
   meta?: {
     event_name?: string;
@@ -120,18 +121,37 @@ async function handleOrderCreated(
   const attrs = payload.data?.attributes || {};
   const orderId = String(payload.data?.id || "");
   const customerId = String(attrs.customer_id || "");
-  const custom = (attrs.custom_data || attrs.first_order_item || {}) as {
+  const metaCustom = (payload.meta?.custom_data || {}) as Record<string, unknown>;
+  const attrCustom = (attrs.custom_data || attrs.first_order_item || {}) as Record<string, unknown>;
+  const custom = { ...metaCustom, ...attrCustom } as {
     user_id?: string;
+    guest_token?: string;
+    is_guest?: string | boolean;
     document_type?: string;
     document_id?: string;
     transaction_id?: string;
   };
 
+  const isGuest = custom.is_guest === "true" || custom.is_guest === true;
+  const guestToken = custom.guest_token ? String(custom.guest_token) : null;
+  const documentId = custom.document_id ? String(custom.document_id) : null;
+
+  if (isGuest && guestToken && documentId && orderId) {
+    await markGuestSessionPaid(
+      admin,
+      guestToken,
+      documentId,
+      orderId,
+      custom.transaction_id ? String(custom.transaction_id) : undefined
+    );
+    return;
+  }
+
   const uid = userId || (custom.user_id ? String(custom.user_id) : null);
   if (!uid || !orderId) return;
 
   const documentType = custom.document_type;
-  const documentId = custom.document_id;
+  const documentIdGuest = custom.document_id;
   const transactionId = custom.transaction_id;
 
   if (transactionId) {
@@ -146,12 +166,12 @@ async function handleOrderCreated(
       .eq("user_id", uid);
   }
 
-  if (documentType && documentId) {
+  if (documentType && documentIdGuest) {
     await admin.from("download_entitlements").upsert(
       {
         user_id: uid,
         document_type: documentType,
-        document_id: documentId,
+        document_id: documentIdGuest,
         transaction_id: transactionId || null,
       },
       { onConflict: "user_id,document_type,document_id" }

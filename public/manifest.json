@@ -41,6 +41,13 @@
       "description": "Overview and recent activity",
       "url": "/",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Invoice generator",
+      "short_name": "Invoice",
+      "description": "Create and download one invoice — no account",
+      "url": "/invoice",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

@@ -17,6 +17,7 @@ In **Supabase → SQL Editor**, run:
 
 1. `supabase/schema.sql` (if not already applied)
 2. `supabase/billing.sql`
+3. `supabase/guest_billing.sql` (anonymous pay-per-download at `/invoice`)
 
 ## Step 2 — Create Lemon Squeezy products
 
@@ -33,8 +34,9 @@ In [Lemon Squeezy](https://app.lemonsqueezy.com):
 - Product: **Document download**
 - Price: **$11.39 CAD**, single payment
 - Copy the **Variant ID** → `LEMONSQUEEZY_VARIANT_PAY_PER_DOWNLOAD`
+- Used by the public **invoice generator** at `/invoice` (no login) and by signed-in users downloading individual PDFs.
 
-### Card setup at signup (recommended for pay-per-download)
+### Card setup at signup (optional — legacy pay-per-download accounts)
 
 Create a **$0** (or $0.01) one-time product used only to collect a card when users choose pay-per-download:
 

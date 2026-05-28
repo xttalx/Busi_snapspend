@@ -3,16 +3,6 @@ function LandingPage({ setupRequired = false }) {
   const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
   const pricing = window.SEED?.BILLING || { payPerDownload: 11.39, proMonthly: 39.39 };
 
-  React.useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("plan") === "pay_per_download") {
-      try { sessionStorage.setItem("signup_plan", "pay_per_download"); } catch (_e) {}
-      const panel = document.querySelector(".landing-auth-panel");
-      if (panel) {
-        setTimeout(() => panel.scrollIntoView({ behavior: "smooth", block: "center" }), 200);
-      }
-    }
-  }, []);
   const features = [
     {
       icon: "expense",
@@ -106,14 +96,7 @@ function LandingPage({ setupRequired = false }) {
             lead={
               setupRequired
                 ? "Sign-in will be available once cloud sync is configured on this server."
-                : (() => {
-                    try {
-                      if (sessionStorage.getItem("signup_plan") === "pay_per_download") {
-                        return "Create an account to build one invoice — pay per PDF download after preview.";
-                      }
-                    } catch (_e) {}
-                    return "Sign in or subscribe to Pro for the full workspace.";
-                  })()
+                : "Sign in or subscribe to Pro for the full workspace."
             }
             compact
           />
@@ -132,14 +115,13 @@ function LandingPage({ setupRequired = false }) {
           <PricingCards
             proOnly
             onSelectPlan={() => {
-              try { sessionStorage.removeItem("signup_plan"); } catch (_e) {}
               document.querySelector(".landing-auth-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
             }}
           />
         )}
         <p className="landing-pay-per-download-link">
           Just need one invoice?{" "}
-          <a href="/?plan=pay_per_download#auth">Pay {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.payPerDownload) : `$${pricing.payPerDownload}`} per download</a>
+          <a href="/invoice">Pay {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.payPerDownload) : `$${pricing.payPerDownload}`} per invoice — no account</a>
         </p>
       </section>
 
