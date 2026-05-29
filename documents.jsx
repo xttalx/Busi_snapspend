@@ -20,11 +20,17 @@ function pdfCaptureTarget(element) {
   return element.querySelector?.(".doc-shell") || element;
 }
 
+const PDF_LAYOUT_WIDTH_PX = 816; /* 8.5in at 96dpi — matches letter desktop layout */
+
 function fixPdfCloneVisibility(clonedDoc) {
   clonedDoc.querySelectorAll(".invoice-lite-pdf-source").forEach((node) => {
     node.style.cssText =
-      "position:static;left:auto;top:auto;visibility:visible;opacity:1;width:8.5in;max-width:8.5in;overflow:visible;z-index:auto;pointer-events:none;";
+      "position:static;left:auto;top:auto;visibility:visible;opacity:1;width:8.5in;min-width:8.5in;max-width:8.5in;overflow:visible;z-index:auto;pointer-events:none;";
     node.removeAttribute("aria-hidden");
+  });
+  clonedDoc.querySelectorAll(".invoice-lite-pdf-source .doc-shell").forEach((shell) => {
+    shell.style.width = "8.5in";
+    shell.style.maxWidth = "8.5in";
   });
 }
 
@@ -42,6 +48,8 @@ async function downloadPreviewPdfFromElement(element, fileName) {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
+        windowWidth: PDF_LAYOUT_WIDTH_PX,
+        width: PDF_LAYOUT_WIDTH_PX,
         onclone: (clonedDoc) => fixPdfCloneVisibility(clonedDoc),
       },
       jsPDF: {
@@ -63,14 +71,20 @@ async function downloadPreviewPdfFromElement(element, fileName) {
   const doc = new jsPDF({ orientation: "portrait", unit: "in", format: [8.5, 11], compress: true });
   const margin = 0.35;
   const contentWidth = 8.5 - margin * 2;
-  const windowWidth = Math.max(target.scrollWidth || 0, target.clientWidth || 0, 900);
+  const windowWidth = PDF_LAYOUT_WIDTH_PX;
   await doc.html(target, {
     x: margin,
     y: margin,
     width: contentWidth,
     windowWidth,
     autoPaging: "text",
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      windowWidth: PDF_LAYOUT_WIDTH_PX,
+      width: PDF_LAYOUT_WIDTH_PX,
+    },
   });
   doc.save(fileName);
 }

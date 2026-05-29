@@ -2333,11 +2333,64 @@ input[type="number"] { -moz-appearance: textfield; }
   left: 0;
   top: 0;
   width: 8.5in;
+  min-width: 8.5in;
   max-width: 8.5in;
   pointer-events: none;
   opacity: 0.01;
   z-index: -1;
   overflow: visible;
+}
+
+/* Letter PDF layout — fixed desktop columns regardless of viewport / tweaks */
+.invoice-lite-pdf-source .doc-shell {
+  width: 8.5in;
+  max-width: 8.5in;
+  box-sizing: border-box;
+}
+
+.invoice-lite-pdf-source .doc-shell .head-block {
+  padding: 28px 32px;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+}
+
+.invoice-lite-pdf-source .doc-shell .head-block .doc-title {
+  font-size: 36px;
+}
+
+.invoice-lite-pdf-source .doc-shell .body-block {
+  padding: 28px 32px 36px;
+}
+
+.invoice-lite-pdf-source .doc-shell .parties {
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.invoice-lite-pdf-source .doc-shell .summary-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.invoice-lite-pdf-source .doc-shell .summary-grid .cell,
+.invoice-lite-pdf-source .doc-shell .summary-grid .cell:first-child,
+.invoice-lite-pdf-source .doc-shell .summary-grid .cell:last-child,
+.invoice-lite-pdf-source .doc-shell .summary-grid .cell:not(:first-child) {
+  border-right: 1px solid #e4e0d4;
+  border-bottom: none;
+  padding: 14px 16px 14px 0;
+}
+
+.invoice-lite-pdf-source .doc-shell .summary-grid .cell:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.invoice-lite-pdf-source .doc-shell .totals .stack {
+  width: 280px;
+}
+
+.invoice-lite-pdf-source .doc-shell .paystub-grid {
+  grid-template-columns: 1fr 1fr;
 }
 
 .invoice-lite-paid-banner {

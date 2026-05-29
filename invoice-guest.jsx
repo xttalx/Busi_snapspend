@@ -95,6 +95,12 @@ function clearCheckoutPending() {
   } catch (_e) {}
 }
 
+function clearGuestDraftStorage() {
+  try {
+    sessionStorage.removeItem(GUEST_DRAFT_KEY);
+  } catch (_e) {}
+}
+
 /** Wait until the off-screen invoice preview is mounted (needed after Stripe redirect). */
 function waitForPreviewElement(ref, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
@@ -239,7 +245,19 @@ function GuestInvoiceApp() {
     setDraft((d) => ({ ...d, invoice }));
   };
 
-  const runDownload = async (draftSnapshot, { skipPaidCheck } = {}) => {
+  const resetToBlankForm = () => {
+    clearCheckoutPending();
+    clearGuestDraftStorage();
+    const fresh = defaultGuestWorkspace(guestId());
+    setDraft(fresh);
+    draftRef.current = fresh;
+    setPaidReady(false);
+    setMode("edit");
+    setPaywall({ open: false, checkoutUrl: null });
+    saveGuestDraft(fresh);
+  };
+
+  const runDownload = async (draftSnapshot, { skipPaymentCheck } = {}) => {
     const source = draftSnapshot || draftRef.current;
     const { invoice, client, business } = source;
     if (!client.name?.trim()) {
@@ -253,12 +271,17 @@ function GuestInvoiceApp() {
       return false;
     }
 
-    if (!skipPaidCheck && window.MartenBilling?.guestDownloadStatus) {
+    if (window.MartenBilling?.guestDownloadStatus) {
       const status = await window.MartenBilling.guestDownloadStatus(
         source.guestToken,
         source.documentId
       );
-      if (!status.allowed) {
+      if (status.downloaded || status.reason === "already_downloaded") {
+        toast("This invoice was already downloaded. Starting a new invoice.");
+        resetToBlankForm();
+        return false;
+      }
+      if (!skipPaymentCheck && !status.allowed) {
         toast("Complete payment before downloading this invoice.");
         return false;
       }
@@ -269,7 +292,16 @@ function GuestInvoiceApp() {
       await waitForPreviewElement(invoicePreviewRef);
       await waitForPreviewContent(invoicePreviewRef, business.name);
       await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
-      toast("Invoice PDF downloaded.");
+
+      if (window.MartenBilling?.completeGuestDownload) {
+        await window.MartenBilling.completeGuestDownload(
+          source.guestToken,
+          source.documentId
+        );
+      }
+
+      toast("Invoice PDF downloaded. You can create another invoice below.");
+      resetToBlankForm();
       return true;
     } catch (err) {
       console.error(err);
@@ -313,7 +345,7 @@ function GuestInvoiceApp() {
     setMode("preview");
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     if (runId !== downloadRunId.current) return;
-    await runDownload(draftSnapshot, { skipPaidCheck: true });
+    await runDownload(draftSnapshot, { skipPaymentCheck: true });
   };
 
   const validateBeforeCheckout = () => {
@@ -343,6 +375,11 @@ function GuestInvoiceApp() {
       }
 
       const status = await window.MartenBilling.guestDownloadStatus(guestToken, documentId);
+      if (status.downloaded || status.reason === "already_downloaded") {
+        toast("This invoice was already downloaded. Starting a new invoice.");
+        resetToBlankForm();
+        return;
+      }
       if (status.allowed) {
         setPaidReady(true);
         await triggerPaidDownload(draft);
@@ -407,8 +444,7 @@ function GuestInvoiceApp() {
             }
           }
           setPaidReady(true);
-          const ok = await triggerPaidDownload(draftToUse);
-          if (ok) clearCheckoutPending();
+          await triggerPaidDownload(draftToUse);
           return;
         }
 
@@ -449,11 +485,11 @@ function GuestInvoiceApp() {
           <h1>Create your invoice</h1>
           <p>
             No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) via Stripe to download the PDF.
-            {paidReady ? " Your payment is confirmed for this invoice." : null}
+            {paidReady ? " Your payment is confirmed — one PDF download per payment." : null}
           </p>
           {paidReady ? (
             <div className="invoice-lite-paid-banner">
-              <p>Your payment succeeded. Download your PDF below.</p>
+              <p>Your payment succeeded. Download your PDF once below.</p>
               <button
                 type="button"
                 className="btn primary"

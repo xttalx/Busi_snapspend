@@ -82,6 +82,17 @@
       return json;
     },
 
+    async completeGuestDownload(guestToken, documentId) {
+      const res = await fetch("/api/billing/guest-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guestToken, documentId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not complete download.");
+      return json;
+    },
+
     formatMoney(amount) {
       return new Intl.NumberFormat("en-CA", {
         style: "currency",

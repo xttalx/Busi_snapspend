@@ -1,23 +1,46 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type GuestDownloadState = {
+  paid: boolean;
+  downloaded: boolean;
+  /** Paid and not yet downloaded — may export PDF once */
+  allowed: boolean;
+};
+
 export function createGuestToken(): string {
   return crypto.randomUUID();
 }
 
-export async function isGuestDownloadPaid(
+export async function getGuestDownloadState(
   admin: SupabaseClient,
   guestToken: string,
   documentId: string
-): Promise<boolean> {
+): Promise<GuestDownloadState> {
   const { data } = await admin
     .from("guest_download_sessions")
-    .select("status")
+    .select("status, downloaded_at")
     .eq("guest_token", guestToken)
     .eq("document_id", documentId)
     .eq("document_type", "invoice")
     .maybeSingle();
 
-  return data?.status === "paid";
+  const paid = data?.status === "paid";
+  const downloaded = Boolean(data?.downloaded_at);
+  return {
+    paid,
+    downloaded,
+    allowed: paid && !downloaded,
+  };
+}
+
+/** @deprecated Use getGuestDownloadState */
+export async function isGuestDownloadPaid(
+  admin: SupabaseClient,
+  guestToken: string,
+  documentId: string
+): Promise<boolean> {
+  const state = await getGuestDownloadState(admin, guestToken, documentId);
+  return state.allowed;
 }
 
 export async function markGuestSessionPaid(
@@ -48,4 +71,21 @@ export async function markGuestSessionPaid(
     .eq("guest_token", guestToken)
     .eq("document_id", documentId)
     .eq("document_type", "invoice");
+}
+
+export async function markGuestSessionDownloaded(
+  admin: SupabaseClient,
+  guestToken: string,
+  documentId: string
+) {
+  await admin
+    .from("guest_download_sessions")
+    .update({
+      downloaded_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("guest_token", guestToken)
+    .eq("document_id", documentId)
+    .eq("document_type", "invoice")
+    .eq("status", "paid");
 }

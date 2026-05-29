@@ -10,6 +10,7 @@ create table if not exists guest_download_sessions (
   ls_order_id text unique,
   stripe_session_id text unique,
   status text not null default 'pending' check (status in ('pending', 'paid', 'failed', 'refunded')),
+  downloaded_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (guest_token, document_id, document_type)
