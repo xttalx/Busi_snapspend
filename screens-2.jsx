@@ -2,7 +2,7 @@
 const { useState: useState2, useMemo: useMemo2, useRef } = React;
 
 /* ---------- Invoices ---------- */
-function InvoiceEditor({ invoice, clients, onChange }) {
+function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
   const update = (patch) => onChange({ ...invoice, ...patch });
   const updateItem = (i, patch) => {
     const items = invoice.items.map((it, idx) => idx === i ? { ...it, ...patch } : it);
@@ -10,13 +10,19 @@ function InvoiceEditor({ invoice, clients, onChange }) {
   };
   const addItem = () => update({ items: [...invoice.items, { desc: "", sub: "", qty: 1, rate: 0 }] });
   const removeItem = (i) => update({ items: invoice.items.filter((_, idx) => idx !== i) });
+  const inputCls = (key, base) => base + (fieldErrors[key] ? " field-invalid" : "");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div className="row-2">
         <div className="field">
           <label>Invoice no.</label>
-          <input className="input mono" value={invoice.number} onChange={(e) => update({ number: e.target.value })} />
+          <input
+            className={inputCls("invoiceNumber", "input mono")}
+            value={invoice.number}
+            onChange={(e) => update({ number: e.target.value })}
+          />
+          {fieldErrors.invoiceNumber ? <p className="field-error-hint">{fieldErrors.invoiceNumber}</p> : null}
         </div>
         <div className="field">
           <label>Status</label>
@@ -37,15 +43,28 @@ function InvoiceEditor({ invoice, clients, onChange }) {
       <div className="row-2">
         <div className="field">
           <label>Issued</label>
-          <input className="input mono" type="date" value={invoice.date} onChange={(e) => update({ date: e.target.value })} />
+          <input
+            className={inputCls("invoiceDate", "input mono")}
+            type="date"
+            value={invoice.date}
+            onChange={(e) => update({ date: e.target.value })}
+          />
+          {fieldErrors.invoiceDate ? <p className="field-error-hint">{fieldErrors.invoiceDate}</p> : null}
         </div>
         <div className="field">
           <label>Due</label>
-          <input className="input mono" type="date" value={invoice.due} onChange={(e) => update({ due: e.target.value })} />
+          <input
+            className={inputCls("invoiceDue", "input mono")}
+            type="date"
+            value={invoice.due}
+            onChange={(e) => update({ due: e.target.value })}
+          />
+          {fieldErrors.invoiceDue ? <p className="field-error-hint">{fieldErrors.invoiceDue}</p> : null}
         </div>
       </div>
 
       <div>
+        {fieldErrors.lineItems ? <p className="field-error-hint">{fieldErrors.lineItems}</p> : null}
         <div className="line-items">
           <span className="lbl">Description</span>
           <span className="lbl" style={{ textAlign: "right" }}>Qty</span>
@@ -54,9 +73,27 @@ function InvoiceEditor({ invoice, clients, onChange }) {
           <span></span>
           {invoice.items.map((it, i) =>
           <React.Fragment key={i}>
-              <input className="input" value={it.desc} placeholder="Line description" onChange={(e) => updateItem(i, { desc: e.target.value })} />
-              <input className="input mono" type="number" value={it.qty} onChange={(e) => updateItem(i, { qty: Number(e.target.value) })} style={{ textAlign: "right" }} />
-              <input className="input mono" type="number" step="0.01" value={it.rate} onChange={(e) => updateItem(i, { rate: Number(e.target.value) })} style={{ textAlign: "right" }} />
+              <input
+                className={inputCls("lineItems", "input")}
+                value={it.desc}
+                placeholder="Line description"
+                onChange={(e) => updateItem(i, { desc: e.target.value })}
+              />
+              <input
+                className={inputCls(`lineItemQty_${i}`, "input mono")}
+                type="number"
+                value={it.qty}
+                onChange={(e) => updateItem(i, { qty: Number(e.target.value) })}
+                style={{ textAlign: "right" }}
+              />
+              <input
+                className={inputCls(`lineItemRate_${i}`, "input mono")}
+                type="number"
+                step="0.01"
+                value={it.rate}
+                onChange={(e) => updateItem(i, { rate: Number(e.target.value) })}
+                style={{ textAlign: "right" }}
+              />
               <span className="calc">{fmtMoney(it.qty * it.rate)}</span>
               <button className="iconbtn" onClick={() => removeItem(i)} title="Remove"><Icon name="close" size={12} /></button>
             </React.Fragment>
@@ -134,6 +171,12 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
       });
       if (!validation.ok) {
         toast(validation.message);
+        if (validation.issues?.length > 1) {
+          console.info(
+            "Invoice validation:",
+            validation.issues.map((i) => `${i.label}: ${i.message}`).join("; ")
+          );
+        }
         return;
       }
     }

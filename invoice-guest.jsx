@@ -193,6 +193,8 @@ function GuestInvoiceApp() {
   const [toastMsg, setToastMsg] = React.useState(null);
   const [paidReady, setPaidReady] = React.useState(false);
   const [downloadBusy, setDownloadBusy] = React.useState(false);
+  const [fieldErrors, setFieldErrors] = React.useState({});
+  const [validationModal, setValidationModal] = React.useState({ open: false, issues: [] });
 
   const returnParams = React.useMemo(() => readReturnParams(), []);
   const postPaymentStarted = React.useRef(false);
@@ -233,16 +235,48 @@ function GuestInvoiceApp() {
     setTimeout(() => setToastMsg(null), 3200);
   };
 
+  const clearFieldError = (...keys) => {
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      keys.forEach((k) => delete next[k]);
+      return next;
+    });
+  };
+
+  const inputCls = (key) => "input" + (fieldErrors[key] ? " field-invalid" : "");
+
+  const showValidationIssues = (validation) => {
+    const errs = {};
+    (validation.issues || []).forEach((issue) => {
+      errs[issue.field] = issue.message;
+    });
+    setFieldErrors(errs);
+    setValidationModal({ open: true, issues: validation.issues || [] });
+    setMode("edit");
+  };
+
   const updateBusiness = (patch) => {
     setDraft((d) => ({ ...d, business: { ...d.business, ...patch } }));
+    if ("name" in patch) clearFieldError("businessName");
+    if ("email" in patch) clearFieldError("businessEmail", "Email");
   };
 
   const updateClient = (patch) => {
     setDraft((d) => ({ ...d, client: { ...d.client, ...patch } }));
+    if ("name" in patch) clearFieldError("clientName");
+    if ("email" in patch) clearFieldError("clientEmail", "Email");
   };
 
   const updateInvoice = (invoice) => {
     setDraft((d) => ({ ...d, invoice }));
+    clearFieldError(
+      "invoiceNumber",
+      "invoiceDate",
+      "invoiceDue",
+      "lineItems",
+      ...invoice.items.map((_, i) => `lineItemQty_${i}`),
+      ...invoice.items.map((_, i) => `lineItemRate_${i}`)
+    );
   };
 
   const resetToBlankForm = () => {
@@ -254,20 +288,18 @@ function GuestInvoiceApp() {
     setPaidReady(false);
     setMode("edit");
     setPaywall({ open: false, checkoutUrl: null });
+    setFieldErrors({});
+    setValidationModal({ open: false, issues: [] });
     saveGuestDraft(fresh);
   };
 
   const runDownload = async (draftSnapshot, { skipPaymentCheck } = {}) => {
     const source = draftSnapshot || draftRef.current;
     const { invoice, client, business } = source;
-    if (!client.name?.trim()) {
-      toast("Add your client's name before downloading.");
-      setMode("edit");
-      return false;
-    }
-    if (!business.name?.trim()) {
-      toast("Add your business name before downloading.");
-      setMode("edit");
+
+    const validation = validateDraft(source);
+    if (!validation.ok) {
+      showValidationIssues(validation);
       return false;
     }
 
@@ -348,14 +380,18 @@ function GuestInvoiceApp() {
     await runDownload(draftSnapshot, { skipPaymentCheck: true });
   };
 
-  const validateBeforeCheckout = () => {
-    if (!window.MartenBilling?.validateInvoiceCheckout) return { ok: true };
+  const validateDraft = (source) => {
+    if (!window.MartenBilling?.validateInvoiceCheckout) return { ok: true, issues: [] };
+    const needsEmail = Boolean(window.MartenBilling?.guestCheckout);
     return window.MartenBilling.validateInvoiceCheckout({
-      business: draft.business,
-      client: draft.client,
-      invoice: draft.invoice,
+      business: source.business,
+      client: source.client,
+      invoice: source.invoice,
+      requireCheckoutEmail: needsEmail,
     });
   };
+
+  const validateBeforeCheckout = () => validateDraft(draftRef.current);
 
   const handleDownload = async () => {
     const { invoice, documentId, guestToken } = draft;
@@ -363,8 +399,7 @@ function GuestInvoiceApp() {
 
     const validation = validateBeforeCheckout();
     if (!validation.ok) {
-      toast(validation.message);
-      setMode("edit");
+      showValidationIssues(validation);
       return;
     }
 
@@ -540,11 +575,14 @@ function GuestInvoiceApp() {
               <div className="field">
                 <label>Business name</label>
                 <input
-                  className="input"
+                  className={inputCls("businessName")}
                   value={business.name}
                   onChange={(e) => updateBusiness({ name: e.target.value })}
                   placeholder="Your Studio Inc."
                 />
+                {fieldErrors.businessName ? (
+                  <p className="field-error-hint">{fieldErrors.businessName}</p>
+                ) : null}
               </div>
               <div className="row-2">
                 <div className="field">
@@ -558,11 +596,14 @@ function GuestInvoiceApp() {
                 <div className="field">
                   <label>Email</label>
                   <input
-                    className="input"
+                    className={inputCls("businessEmail")}
                     type="email"
                     value={business.email || ""}
                     onChange={(e) => updateBusiness({ email: e.target.value })}
                   />
+                  {fieldErrors.businessEmail ? (
+                    <p className="field-error-hint">{fieldErrors.businessEmail}</p>
+                  ) : null}
                 </div>
               </div>
               <div className="field">
@@ -581,11 +622,14 @@ function GuestInvoiceApp() {
               <div className="field">
                 <label>Client / company name</label>
                 <input
-                  className="input"
+                  className={inputCls("clientName")}
                   value={client.name}
                   onChange={(e) => updateClient({ name: e.target.value })}
                   placeholder="Acme Studio Inc."
                 />
+                {fieldErrors.clientName ? (
+                  <p className="field-error-hint">{fieldErrors.clientName}</p>
+                ) : null}
               </div>
               <div className="row-2">
                 <div className="field">
@@ -599,11 +643,14 @@ function GuestInvoiceApp() {
                 <div className="field">
                   <label>Email</label>
                   <input
-                    className="input"
+                    className={inputCls("clientEmail")}
                     type="email"
                     value={client.email || ""}
                     onChange={(e) => updateClient({ email: e.target.value })}
                   />
+                  {fieldErrors.clientEmail ? (
+                    <p className="field-error-hint">{fieldErrors.clientEmail}</p>
+                  ) : null}
                 </div>
               </div>
               <div className="field">
@@ -623,6 +670,7 @@ function GuestInvoiceApp() {
                 invoice={invoice}
                 clients={[{ id: client.id, name: client.name || "Client" }]}
                 onChange={updateInvoice}
+                fieldErrors={fieldErrors}
               />
             </section>
           </div>
@@ -643,6 +691,15 @@ function GuestInvoiceApp() {
         )}
       </main>
 
+      {window.InvoiceValidationModal ? (
+        <InvoiceValidationModal
+          open={validationModal.open}
+          issues={validationModal.issues}
+          title="Fix these fields before checkout"
+          onClose={() => setValidationModal({ open: false, issues: [] })}
+        />
+      ) : null}
+
       <PaywallModal
         open={paywall.open}
         onClose={() => setPaywall({ open: false, checkoutUrl: null })}
@@ -652,9 +709,8 @@ function GuestInvoiceApp() {
         onProceed={() => {
           const v = validateBeforeCheckout();
           if (!v.ok) {
-            toast(v.message);
+            showValidationIssues(v);
             setPaywall({ open: false, checkoutUrl: null });
-            setMode("edit");
             return;
           }
           persistCheckoutDraft(draftRef.current);

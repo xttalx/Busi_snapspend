@@ -8,6 +8,12 @@
     ...(window.SEED?.BILLING || {}),
   };
 
+  function isValidEmail(value) {
+    const v = String(value || "").trim();
+    if (!v) return true;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(v);
+  }
+
   async function getAccessToken() {
     const sb = window.MartenSupabase?.getClient?.();
     if (!sb) return null;
@@ -108,19 +114,91 @@
       return MartenBilling.formatMoney(PRICING.payPerDownload);
     },
 
-    /** Block checkout until invoice form has required fields. */
-    validateInvoiceCheckout({ business, client, invoice }) {
-      const missing = [];
-      if (!business?.name?.trim()) missing.push("your business name");
-      if (!client?.name?.trim()) missing.push("client name");
-      const hasLine = (invoice?.items || []).some((it) => String(it.desc || "").trim());
-      if (!hasLine) missing.push("at least one line item description");
-      if (!missing.length) return { ok: true };
+    isValidEmail,
+
+    /** Block checkout until invoice form is complete and emails are valid. */
+    validateInvoiceCheckout({ business, client, invoice, requireCheckoutEmail = false }) {
+      const issues = [];
+      const add = (field, label, message) => issues.push({ field, label, message });
+
+      if (!business?.name?.trim()) {
+        add("businessName", "Business name", "Enter your business name.");
+      }
+
+      const businessEmail = business?.email?.trim() || "";
+      if (businessEmail && !isValidEmail(businessEmail)) {
+        add("businessEmail", "Your email", "Enter a valid email (e.g. you@studio.com).");
+      }
+
+      if (!client?.name?.trim()) {
+        add("clientName", "Client name", "Enter your client's name or company.");
+      }
+
+      const clientEmail = client?.email?.trim() || "";
+      if (clientEmail && !isValidEmail(clientEmail)) {
+        add("clientEmail", "Client email", "Enter a valid client email address.");
+      }
+
+      if (requireCheckoutEmail) {
+        const hasValidBiz = businessEmail && isValidEmail(businessEmail);
+        const hasValidClient = clientEmail && isValidEmail(clientEmail);
+        if (!hasValidBiz && !hasValidClient) {
+          if (!businessEmail && !clientEmail) {
+            add(
+              "businessEmail",
+              "Email",
+              "Enter your email or your client's email for payment and receipts."
+            );
+          } else {
+            if (businessEmail && !isValidEmail(businessEmail)) {
+              add("businessEmail", "Your email", "Fix your email address before checkout.");
+            }
+            if (clientEmail && !isValidEmail(clientEmail)) {
+              add("clientEmail", "Client email", "Fix the client email address before checkout.");
+            }
+          }
+        }
+      }
+
+      if (!invoice?.number?.trim()) {
+        add("invoiceNumber", "Invoice number", "Enter an invoice number.");
+      }
+
+      if (!invoice?.date) {
+        add("invoiceDate", "Invoice date", "Choose an invoice date.");
+      }
+
+      if (!invoice?.due) {
+        add("invoiceDue", "Due date", "Choose a due date.");
+      } else if (invoice?.date && invoice.due < invoice.date) {
+        add("invoiceDue", "Due date", "Due date must be on or after the invoice date.");
+      }
+
+      const items = invoice?.items || [];
+      const lineWithDesc = items.filter((it) => String(it.desc || "").trim());
+      if (!lineWithDesc.length) {
+        add("lineItems", "Line items", "Add at least one line item with a description.");
+      } else {
+        lineWithDesc.forEach((it, idx) => {
+          const qty = Number(it.qty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            add(`lineItemQty_${idx}`, `Line ${idx + 1} quantity`, "Quantity must be greater than zero.");
+          }
+          const rate = Number(it.rate);
+          if (!Number.isFinite(rate) || rate < 0) {
+            add(`lineItemRate_${idx}`, `Line ${idx + 1} rate`, "Rate must be zero or a positive number.");
+          }
+        });
+      }
+
+      if (!issues.length) return { ok: true, issues: [] };
+
       const message =
-        missing.length === 1
-          ? `Add ${missing[0]} before checkout.`
-          : `Complete the invoice form before checkout: ${missing.join(", ")}.`;
-      return { ok: false, message, missing };
+        issues.length === 1
+          ? `${issues[0].label}: ${issues[0].message}`
+          : `Please fix ${issues.length} fields before continuing.`;
+
+      return { ok: false, message, issues };
     },
 
     isProActive(status) {
@@ -248,6 +326,43 @@
           )}
         </article>
       </div>
+    );
+  }
+
+  /* ---------- Invoice validation modal ---------- */
+  function InvoiceValidationModal({ open, onClose, issues, title }) {
+    if (!open || !issues?.length) return null;
+    return (
+      <>
+        <div className="modal-scrim" onClick={onClose}></div>
+        <div className="modal billing-modal" role="alertdialog" aria-labelledby="invoice-validation-title">
+          <div className="modal-head">
+            <div>
+              <div className="kicker">Check your form</div>
+              <h3 id="invoice-validation-title">{title || "Some details need attention"}</h3>
+              <p className="modal-sub">Fix the fields below, then try again.</p>
+            </div>
+            <button type="button" className="iconbtn" onClick={onClose} aria-label="Close">
+              <Icon name="close" />
+            </button>
+          </div>
+          <div className="modal-body">
+            <ul className="validation-issue-list">
+              {issues.map((issue) => (
+                <li key={issue.field}>
+                  <strong>{issue.label}</strong>
+                  <span>{issue.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn primary" onClick={onClose}>
+              Go back to form
+            </button>
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -456,6 +571,7 @@
 
   window.PricingCards = PricingCards;
   window.PaywallModal = PaywallModal;
+  window.InvoiceValidationModal = InvoiceValidationModal;
   window.UpgradeModal = UpgradeModal;
   window.BillingOnboarding = BillingOnboarding;
   window.BillingSettings = BillingSettings;

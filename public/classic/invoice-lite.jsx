@@ -75,6 +75,12 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
       });
       if (!validation.ok) {
         toast(validation.message);
+        if (validation.issues?.length > 1) {
+          console.info(
+            "Invoice validation:",
+            validation.issues.map((i) => `${i.label}: ${i.message}`).join("; ")
+          );
+        }
         setMode("edit");
         return;
       }
@@ -102,6 +108,12 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
       });
       if (!validation.ok) {
         toast(validation.message);
+        if (validation.issues?.length > 1) {
+          console.info(
+            "Invoice validation:",
+            validation.issues.map((i) => `${i.label}: ${i.message}`).join("; ")
+          );
+        }
         setMode("edit");
         return;
       }
