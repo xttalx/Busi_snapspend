@@ -1,9 +1,11 @@
 /* Billing — Lemon Squeezy paywall, pricing, subscription management */
 (function () {
-  const PRICING = window.SEED?.BILLING || {
+  /** Keep in sync with lib/billing/config.ts */
+  const PRICING = {
     currency: "CAD",
     proMonthly: 39.39,
     payPerDownload: 9.99,
+    ...(window.SEED?.BILLING || {}),
   };
 
   async function getAccessToken() {
@@ -85,6 +87,29 @@
         style: "currency",
         currency: PRICING.currency || "CAD",
       }).format(amount);
+    },
+
+    getPayPerDownloadAmount() {
+      return PRICING.payPerDownload;
+    },
+
+    formatPayPerDownload() {
+      return MartenBilling.formatMoney(PRICING.payPerDownload);
+    },
+
+    /** Block checkout until invoice form has required fields. */
+    validateInvoiceCheckout({ business, client, invoice }) {
+      const missing = [];
+      if (!business?.name?.trim()) missing.push("your business name");
+      if (!client?.name?.trim()) missing.push("client name");
+      const hasLine = (invoice?.items || []).some((it) => String(it.desc || "").trim());
+      if (!hasLine) missing.push("at least one line item description");
+      if (!missing.length) return { ok: true };
+      const message =
+        missing.length === 1
+          ? `Add ${missing[0]} before checkout.`
+          : `Complete the invoice form before checkout: ${missing.join(", ")}.`;
+      return { ok: false, message, missing };
     },
 
     isProActive(status) {

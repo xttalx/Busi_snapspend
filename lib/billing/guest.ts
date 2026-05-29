@@ -14,6 +14,7 @@ export async function isGuestDownloadPaid(
     .select("status")
     .eq("guest_token", guestToken)
     .eq("document_id", documentId)
+    .eq("document_type", "invoice")
     .maybeSingle();
 
   return data?.status === "paid";
@@ -45,5 +46,6 @@ export async function markGuestSessionPaid(
     .from("guest_download_sessions")
     .update(patch)
     .eq("guest_token", guestToken)
-    .eq("document_id", documentId);
+    .eq("document_id", documentId)
+    .eq("document_type", "invoice");
 }

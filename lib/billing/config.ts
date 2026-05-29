@@ -1,4 +1,4 @@
-/** Billing constants — display prices; Lemon Squeezy variants hold authoritative amounts. */
+/** Billing constants — pay-per-download is 9.99 CAD (999 cents). Update Lemon Squeezy variant to match. */
 export const BILLING = {
   currency: "CAD",
   proMonthly: 39.39,

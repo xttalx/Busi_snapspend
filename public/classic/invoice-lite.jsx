@@ -67,7 +67,18 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
   };
 
   const runDownload = async () => {
-    if (!inv || !client?.name?.trim()) {
+    if (window.MartenBilling?.validateInvoiceCheckout) {
+      const validation = window.MartenBilling.validateInvoiceCheckout({
+        business,
+        client,
+        invoice: inv,
+      });
+      if (!validation.ok) {
+        toast(validation.message);
+        setMode("edit");
+        return;
+      }
+    } else if (!inv || !client?.name?.trim()) {
       toast("Add your client's name before downloading.");
       setMode("edit");
       return;
@@ -83,6 +94,18 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
 
   const handleDownload = async () => {
     if (!inv) return;
+    if (window.MartenBilling?.validateInvoiceCheckout) {
+      const validation = window.MartenBilling.validateInvoiceCheckout({
+        business,
+        client,
+        invoice: inv,
+      });
+      if (!validation.ok) {
+        toast(validation.message);
+        setMode("edit");
+        return;
+      }
+    }
     try {
       if (!window.MartenBilling || billingStatus?.billingDisabled) {
         await runDownload();
@@ -120,9 +143,11 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
     return <div className="invoice-lite-loading">Preparing invoice…</div>;
   }
 
-  const dlPrice = window.MartenBilling
-    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 9.99)
-    : "$9.99";
+  const dlPrice = window.MartenBilling?.formatPayPerDownload
+    ? window.MartenBilling.formatPayPerDownload()
+    : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
+        window.SEED?.BILLING?.payPerDownload ?? 9.99
+      );
 
   return (
     <div className="invoice-lite">
@@ -275,9 +300,11 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
 }
 
 function PayPerDownloadSetup({ email, toast }) {
-  const price = window.MartenBilling
-    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 9.99)
-    : "$9.99";
+  const price = window.MartenBilling?.formatPayPerDownload
+    ? window.MartenBilling.formatPayPerDownload()
+    : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
+        window.SEED?.BILLING?.payPerDownload ?? 9.99
+      );
   const [busy, setBusy] = React.useState(false);
 
   const start = async () => {

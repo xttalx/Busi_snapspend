@@ -36,6 +36,21 @@ function saveGuestDraft(draft) {
   } catch (_e) {}
 }
 
+/** Wait until the off-screen invoice preview is mounted (needed after Stripe redirect). */
+function waitForPreviewElement(ref, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tick = () => {
+      if (ref.current) return resolve(ref.current);
+      if (Date.now() - start > timeoutMs) {
+        return reject(new Error("Invoice preview not ready. Click Pay & download to try again."));
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 function defaultGuestWorkspace(documentId) {
   const today = new Date();
   const due = new Date(today.getTime() + 30 * 86400000);
@@ -135,12 +150,15 @@ function GuestInvoiceApp() {
       setMode("edit");
       return;
     }
-    if (mode !== "preview") {
-      setMode("preview");
-      await new Promise((r) => setTimeout(r, 220));
+    try {
+      await waitForPreviewElement(invoicePreviewRef);
+      await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
+      toast("Invoice PDF downloaded.");
+    } catch (err) {
+      console.error(err);
+      toast(err?.message || "Download failed.");
+      throw err;
     }
-    await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
-    toast("Invoice PDF downloaded.");
   };
 
   const waitForPayment = async (guestToken, documentId, stripeSessionId) => {
@@ -157,9 +175,25 @@ function GuestInvoiceApp() {
     return false;
   };
 
+  const validateBeforeCheckout = () => {
+    if (!window.MartenBilling?.validateInvoiceCheckout) return { ok: true };
+    return window.MartenBilling.validateInvoiceCheckout({
+      business: draft.business,
+      client: draft.client,
+      invoice: draft.invoice,
+    });
+  };
+
   const handleDownload = async () => {
     const { invoice, documentId, guestToken } = draft;
     if (!invoice) return;
+
+    const validation = validateBeforeCheckout();
+    if (!validation.ok) {
+      toast(validation.message);
+      setMode("edit");
+      return;
+    }
 
     try {
       if (!window.MartenBilling || !window.MartenBilling.guestCheckout) {
@@ -199,30 +233,38 @@ function GuestInvoiceApp() {
     const stripeSessionId = q.get("session_id");
     if (!guestToken || !documentId) return;
 
-    if (documentId !== draft.documentId) {
-      toast("Payment received for a different session — restore your draft or start again.");
-      window.history.replaceState({}, "", "/invoice");
-      return;
-    }
-
-    setDraft((d) => ({ ...d, guestToken }));
+    setDraft((d) => ({
+      ...d,
+      guestToken,
+      documentId,
+      invoice: d.invoice ? { ...d.invoice, id: documentId } : d.invoice,
+    }));
 
     (async () => {
-      toast("Payment received — preparing your download…");
-      const ok = await waitForPayment(guestToken, documentId, stripeSessionId);
-      window.history.replaceState({}, "", "/invoice");
-      if (ok) {
+      try {
+        toast("Payment received — preparing your download…");
+        const ok = await waitForPayment(guestToken, documentId, stripeSessionId);
+        window.history.replaceState({}, "", "/invoice");
+        if (!ok) {
+          toast("Payment is processing. Click Pay & download again in a moment.");
+          return;
+        }
         setPaidReady(true);
+        setMode("preview");
         await runDownload();
-      } else {
-        toast("Payment is processing. Click Download again in a moment.");
+      } catch (err) {
+        console.error("Post-payment download failed:", err);
+        window.history.replaceState({}, "", "/invoice");
+        toast(err?.message || "Download failed. Click Pay & download to try again.");
       }
     })();
   }, []);
 
-  const dlPrice = window.MartenBilling
-    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 9.99)
-    : "$9.99";
+  const dlPrice = window.MartenBilling?.formatPayPerDownload
+    ? window.MartenBilling.formatPayPerDownload()
+    : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
+        window.SEED?.BILLING?.payPerDownload ?? 9.99
+      );
 
   const { invoice, client, business } = draft;
 
@@ -373,7 +415,7 @@ function GuestInvoiceApp() {
           </div>
         ) : (
           <div className="invoice-lite-preview">
-            <div ref={invoicePreviewRef}>
+            <div>
               <InvoiceDocument invoice={invoice} client={client} business={business} />
             </div>
             <div className="invoice-lite-preview-actions">
@@ -395,11 +437,25 @@ function GuestInvoiceApp() {
         documentId={draft.documentId}
         busy={paywallBusy}
         onProceed={() => {
+          const v = validateBeforeCheckout();
+          if (!v.ok) {
+            toast(v.message);
+            setPaywall({ open: false, checkoutUrl: null });
+            setMode("edit");
+            return;
+          }
           if (!paywall.checkoutUrl) return;
           setPaywallBusy(true);
           window.location.href = paywall.checkoutUrl;
         }}
       />
+
+      {/* Always mounted so PDF export works after Stripe redirect (edit mode has no visible preview). */}
+      <div className="invoice-lite-pdf-source" aria-hidden="true">
+        <div ref={invoicePreviewRef}>
+          <InvoiceDocument invoice={invoice} client={client} business={business} />
+        </div>
+      </div>
 
       {toastMsg && (
         <div className="toast invoice-lite-toast">

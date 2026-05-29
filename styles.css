@@ -2327,6 +2327,16 @@ input[type="number"] { -moz-appearance: textfield; }
   margin: 0 0 12px;
 }
 
+.invoice-lite-pdf-source {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 8.5in;
+  pointer-events: none;
+  visibility: hidden;
+  overflow: hidden;
+}
+
 .invoice-lite-preview {
   margin-top: 8px;
 }

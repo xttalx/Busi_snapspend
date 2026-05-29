@@ -186,7 +186,7 @@ function HelpSupportModal({ open, onClose, session, userBusiness, toast }) {
   const submit = (e) => {
     e.preventDefault();
     const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
-    const supportEmail = window.SEED?.SUPPORT_EMAIL || "support@martenbooks.com";
+    const supportEmail = window.SEED?.SUPPORT_EMAIL || "info@martenbooks.com";
     const subject = topic.trim() || `${brand} support request`;
     const body = [
       `Name: ${name.trim() || "—"}`,

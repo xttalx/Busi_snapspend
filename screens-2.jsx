@@ -126,6 +126,17 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
       toast("Select an invoice with a client first.");
       return;
     }
+    if (window.MartenBilling?.validateInvoiceCheckout) {
+      const validation = window.MartenBilling.validateInvoiceCheckout({
+        business,
+        client,
+        invoice: inv,
+      });
+      if (!validation.ok) {
+        toast(validation.message);
+        return;
+      }
+    }
     try {
       if (!window.MartenBilling) {
         await runInvoicePdfDownload();
@@ -156,7 +167,10 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
     const pending = window.__pendingBillingDownload;
     if (pending && pending.documentId === inv.id && pending.documentType === "invoice") {
       delete window.__pendingBillingDownload;
-      downloadCurrentInvoicePdf();
+      runInvoicePdfDownload().catch((error) => {
+        toast(error?.message || "Could not download invoice PDF.");
+        console.error(error);
+      });
     }
   }, [params?.billingDownload, inv?.id]);
 

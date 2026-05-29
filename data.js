@@ -3,12 +3,14 @@ window.SEED = (() => {
   const BRAND_NAME = "Marten Bookkeeping";
   const BRAND_LOGO = "/icons/logo.png";
   const BRAND_DOMAIN = "martenbooks.com";
-  const SUPPORT_EMAIL = "support@martenbooks.com";
+  const SUPPORT_EMAIL = "info@martenbooks.com";
 
+  /** Display prices — charges use lib/billing/config.ts (payPerDownload: 9.99 CAD). */
   const BILLING = {
     currency: "CAD",
     proMonthly: 39.39,
     payPerDownload: 9.99,
+    payPerDownloadCents: 999,
   };
 
   const CATEGORIES = [

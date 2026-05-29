@@ -1,8 +1,6 @@
 /* Marketing landing — sign in / create account + product story */
 function LandingPage({ setupRequired = false }) {
   const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
-  const pricing = window.SEED?.BILLING || { payPerDownload: 9.99, proMonthly: 39.39 };
-
   const features = [
     {
       icon: "expense",
