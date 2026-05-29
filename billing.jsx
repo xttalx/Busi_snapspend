@@ -3,7 +3,7 @@
   const PRICING = window.SEED?.BILLING || {
     currency: "CAD",
     proMonthly: 39.39,
-    payPerDownload: 11.39,
+    payPerDownload: 9.99,
   };
 
   async function getAccessToken() {
@@ -71,8 +71,9 @@
       return json;
     },
 
-    async guestDownloadStatus(guestToken, documentId) {
+    async guestDownloadStatus(guestToken, documentId, stripeSessionId) {
       const qs = new URLSearchParams({ guest_token: guestToken, document_id: documentId });
+      if (stripeSessionId) qs.set("session_id", stripeSessionId);
       const res = await fetch(`/api/billing/guest-status?${qs}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not verify payment.");
@@ -105,9 +106,49 @@
   MartenBilling.isPayPerDownloadUser = isPayPerDownloadUser;
 
   /* ---------- Pricing cards (landing + upgrade) ---------- */
-  function PricingCards({ onSelectPlan, compact = false, currentPlan = null, proOnly = false }) {
+  function PricingCards({ onSelectPlan, compact = false, currentPlan = null, proOnly = false, landingPricing = false }) {
     const proPrice = MartenBilling.formatMoney(PRICING.proMonthly);
     const dlPrice = MartenBilling.formatMoney(PRICING.payPerDownload);
+
+    if (landingPricing) {
+      return (
+        <div className="pricing-grid pricing-grid-landing">
+          <article className={"pricing-card pricing-card-featured " + (currentPlan === "pro" ? "current" : "")}>
+            <p className="pricing-kicker">Full studio</p>
+            <h3>Pro Monthly</h3>
+            <p className="pricing-amount">
+              {proPrice}<span>/month</span>
+            </p>
+            <ul className="pricing-features">
+              <li><Icon name="check" size={14} /> Unlimited invoice &amp; paystub downloads</li>
+              <li><Icon name="check" size={14} /> Expenses, payroll, clients &amp; reports</li>
+              <li><Icon name="check" size={14} /> Secure cloud workspace — sign in required</li>
+            </ul>
+            {onSelectPlan && (
+              <button type="button" className="btn primary pricing-cta" onClick={() => onSelectPlan("pro")}>
+                Get started with Pro
+              </button>
+            )}
+          </article>
+
+          <article className="pricing-card pricing-card-guest">
+            <p className="pricing-kicker">One invoice</p>
+            <h3>Pay per download</h3>
+            <p className="pricing-amount">
+              {dlPrice}<span>/invoice</span>
+            </p>
+            <ul className="pricing-features">
+              <li><Icon name="check" size={14} /> No account — fill form &amp; preview free</li>
+              <li><Icon name="check" size={14} /> Pay once to download your PDF</li>
+              <li><Icon name="check" size={14} /> Secure checkout via Stripe</li>
+            </ul>
+            <a href="/invoice" className="btn pricing-cta">
+              Create invoice
+            </a>
+          </article>
+        </div>
+      );
+    }
 
     if (proOnly) {
       return (
@@ -202,7 +243,7 @@
               <strong>{price}</strong>
             </div>
             <p className="help" style={{ margin: 0 }}>
-              You&apos;ll complete payment securely via Lemon Squeezy, then your download starts automatically.
+              You&apos;ll complete payment securely, then your download starts automatically.
             </p>
           </div>
           <div className="modal-foot">

@@ -121,8 +121,8 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
   }
 
   const dlPrice = window.MartenBilling
-    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 11.39)
-    : "$11.39";
+    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 9.99)
+    : "$9.99";
 
   return (
     <div className="invoice-lite">
@@ -276,8 +276,8 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
 
 function PayPerDownloadSetup({ email, toast }) {
   const price = window.MartenBilling
-    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 11.39)
-    : "$11.39";
+    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 9.99)
+    : "$9.99";
   const [busy, setBusy] = React.useState(false);
 
   const start = async () => {

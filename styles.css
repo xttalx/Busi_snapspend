@@ -2063,6 +2063,21 @@ input[type="number"] { -moz-appearance: textfield; }
   max-width: 420px;
 }
 
+.pricing-grid-landing {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.pricing-card-guest {
+  border-color: color-mix(in oklch, var(--ink-3) 25%, var(--rule));
+}
+
+.pricing-card-guest .pricing-cta {
+  text-align: center;
+  text-decoration: none;
+  justify-content: center;
+}
+
 .pricing-card-featured {
   border-color: color-mix(in oklch, var(--accent) 40%, var(--rule));
 }

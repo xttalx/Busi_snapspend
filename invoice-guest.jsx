@@ -143,10 +143,14 @@ function GuestInvoiceApp() {
     toast("Invoice PDF downloaded.");
   };
 
-  const waitForPayment = async (guestToken, documentId) => {
+  const waitForPayment = async (guestToken, documentId, stripeSessionId) => {
     if (!window.MartenBilling?.guestDownloadStatus) return false;
     for (let i = 0; i < 25; i++) {
-      const status = await window.MartenBilling.guestDownloadStatus(guestToken, documentId);
+      const status = await window.MartenBilling.guestDownloadStatus(
+        guestToken,
+        documentId,
+        stripeSessionId
+      );
       if (status.allowed) return true;
       await new Promise((r) => setTimeout(r, 2000));
     }
@@ -192,6 +196,7 @@ function GuestInvoiceApp() {
 
     const guestToken = q.get("guest_token");
     const documentId = q.get("document_id");
+    const stripeSessionId = q.get("session_id");
     if (!guestToken || !documentId) return;
 
     if (documentId !== draft.documentId) {
@@ -204,7 +209,7 @@ function GuestInvoiceApp() {
 
     (async () => {
       toast("Payment received — preparing your download…");
-      const ok = await waitForPayment(guestToken, documentId);
+      const ok = await waitForPayment(guestToken, documentId, stripeSessionId);
       window.history.replaceState({}, "", "/invoice");
       if (ok) {
         setPaidReady(true);
@@ -216,8 +221,8 @@ function GuestInvoiceApp() {
   }, []);
 
   const dlPrice = window.MartenBilling
-    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 11.39)
-    : "$11.39";
+    ? window.MartenBilling.formatMoney(window.SEED?.BILLING?.payPerDownload || 9.99)
+    : "$9.99";
 
   const { invoice, client, business } = draft;
 
@@ -237,7 +242,7 @@ function GuestInvoiceApp() {
         <div className="invoice-lite-intro">
           <h1>Create your invoice</h1>
           <p>
-            No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) to download the PDF.
+            No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) via Stripe to download the PDF.
             {paidReady ? " Your payment is confirmed for this invoice." : null}
           </p>
         </div>

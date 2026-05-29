@@ -27,7 +27,7 @@ create table if not exists subscriptions (
 
 create index if not exists subscriptions_user_id_idx on subscriptions (user_id);
 
--- Pay-per-download purchases ($11.39 CAD per invoice/paystub)
+-- Pay-per-download purchases ($9.99 CAD per invoice/paystub)
 create table if not exists download_transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,

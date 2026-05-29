@@ -8,7 +8,7 @@ window.SEED = (() => {
   const BILLING = {
     currency: "CAD",
     proMonthly: 39.39,
-    payPerDownload: 11.39,
+    payPerDownload: 9.99,
   };
 
   const CATEGORIES = [

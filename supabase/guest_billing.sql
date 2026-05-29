@@ -8,6 +8,7 @@ create table if not exists guest_download_sessions (
   amount_cents integer not null,
   currency text not null default 'CAD',
   ls_order_id text unique,
+  stripe_session_id text unique,
   status text not null default 'pending' check (status in ('pending', 'paid', 'failed', 'refunded')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

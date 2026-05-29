@@ -1,7 +1,7 @@
 /* Marketing landing — sign in / create account + product story */
 function LandingPage({ setupRequired = false }) {
   const brand = window.SEED?.BRAND_NAME || "Marten Bookkeeping";
-  const pricing = window.SEED?.BILLING || { payPerDownload: 11.39, proMonthly: 39.39 };
+  const pricing = window.SEED?.BILLING || { payPerDownload: 9.99, proMonthly: 39.39 };
 
   const features = [
     {
@@ -106,23 +106,19 @@ function LandingPage({ setupRequired = false }) {
       <section className="landing-pricing" id="pricing" aria-labelledby="landing-pricing-heading">
         <div className="landing-features-head">
           <p className="landing-kicker">Pricing</p>
-          <h2 id="landing-pricing-heading">Pro for your full studio</h2>
+          <h2 id="landing-pricing-heading">Choose how you want to work</h2>
           <p className="landing-features-lead">
-            One plan for unlimited invoice and paystub downloads, plus the full expense and payroll workspace — {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.proMonthly) : `$${pricing.proMonthly}`} CAD per month.
+            Subscribe to Pro for your full studio, or create a single invoice with pay-per-download — no account required.
           </p>
         </div>
         {window.PricingCards && (
           <PricingCards
-            proOnly
+            landingPricing
             onSelectPlan={() => {
               document.querySelector(".landing-auth-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
             }}
           />
         )}
-        <p className="landing-pay-per-download-link">
-          Just need one invoice?{" "}
-          <a href="/invoice">Pay {window.MartenBilling ? window.MartenBilling.formatMoney(pricing.payPerDownload) : `$${pricing.payPerDownload}`} per invoice — no account</a>
-        </p>
       </section>
 
       <section className="landing-features" aria-labelledby="landing-features-heading">

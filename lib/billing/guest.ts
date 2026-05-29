@@ -23,14 +23,20 @@ export async function markGuestSessionPaid(
   admin: SupabaseClient,
   guestToken: string,
   documentId: string,
-  orderId: string,
-  transactionId?: string
+  orderRef: string,
+  transactionId?: string,
+  stripeSessionId?: string
 ) {
-  const patch = {
+  const patch: Record<string, unknown> = {
     status: "paid",
-    ls_order_id: orderId,
     updated_at: new Date().toISOString(),
   };
+
+  if (stripeSessionId) {
+    patch.stripe_session_id = stripeSessionId;
+  } else {
+    patch.ls_order_id = orderRef;
+  }
 
   if (transactionId) {
     await admin.from("guest_download_sessions").update(patch).eq("id", transactionId);

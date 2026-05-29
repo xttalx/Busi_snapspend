@@ -2,9 +2,9 @@
 export const BILLING = {
   currency: "CAD",
   proMonthly: 39.39,
-  payPerDownload: 11.39,
+  payPerDownload: 9.99,
   proMonthlyCents: 3939,
-  payPerDownloadCents: 1139,
+  payPerDownloadCents: 999,
 } as const;
 
 export type BillingPlan = "none" | "pro" | "pay_per_download";

@@ -142,7 +142,8 @@ async function handleOrderCreated(
       guestToken,
       documentId,
       orderId,
-      custom.transaction_id ? String(custom.transaction_id) : undefined
+      custom.transaction_id ? String(custom.transaction_id) : undefined,
+      undefined
     );
     return;
   }

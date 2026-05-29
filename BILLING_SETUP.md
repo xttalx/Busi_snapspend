@@ -1,6 +1,6 @@
 # Marten Bookkeeping — Paid Tier Setup (Lemon Squeezy)
 
-This guide walks through enabling **Pro Monthly** ($39.39 CAD/mo) and **Pay-per-download** ($11.39 CAD per invoice/paystub PDF).
+This guide walks through enabling **Pro Monthly** ($39.39 CAD/mo) and **Pay-per-download** ($9.99 CAD per invoice/paystub PDF).
 
 ## Architecture
 
@@ -8,7 +8,8 @@ This guide walks through enabling **Pro Monthly** ($39.39 CAD/mo) and **Pay-per-
 |--------|------|
 | **Supabase** | `billing_profiles`, `subscriptions`, `download_transactions`, `download_entitlements` |
 | **Next.js API** | `/api/billing/*` — checkout, status, download authorization, webhooks |
-| **Lemon Squeezy** | Subscriptions, one-time charges, customer portal, card capture |
+| **Lemon Squeezy** | Pro subscriptions, signed-in per-download charges, customer portal |
+| **Stripe** | Guest pay-per-download at `/invoice` (no login) |
 | **Classic app** | `billing.jsx` — pricing UI, paywall, onboarding, settings |
 
 ## Step 1 — Run database migration
@@ -18,8 +19,29 @@ In **Supabase → SQL Editor**, run:
 1. `supabase/schema.sql` (if not already applied)
 2. `supabase/billing.sql`
 3. `supabase/guest_billing.sql` (anonymous pay-per-download at `/invoice`)
+4. `supabase/guest_billing_stripe.sql` (if guest table already exists — adds `stripe_session_id`)
 
-## Step 2 — Create Lemon Squeezy products
+## Step 2 — Stripe (guest invoice generator at `/invoice`)
+
+In [Stripe Dashboard](https://dashboard.stripe.com):
+
+1. **Developers → API keys** — copy **Secret key** → `STRIPE_SECRET_KEY`
+2. **Developers → Webhooks → Add endpoint**
+   - URL: `https://martenbooks.com/api/billing/stripe-webhook` (your production domain)
+   - Event: `checkout.session.completed`
+   - Copy **Signing secret** → `STRIPE_WEBHOOK_SECRET`
+3. Add to Vercel (or `.env.local`):
+
+```env
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+Guest checkout uses **dynamic pricing** ($9.99 CAD) — no Stripe Price ID required.
+
+When Stripe is configured, `/invoice` uses Stripe automatically. Lemon Squeezy is still used for Pro subscriptions and signed-in downloads.
+
+## Step 3 — Create Lemon Squeezy products
 
 In [Lemon Squeezy](https://app.lemonsqueezy.com):
 
@@ -32,7 +54,7 @@ In [Lemon Squeezy](https://app.lemonsqueezy.com):
 ### Pay per download (one-time)
 
 - Product: **Document download**
-- Price: **$11.39 CAD**, single payment
+- Price: **$9.99 CAD**, single payment
 - Copy the **Variant ID** → `LEMONSQUEEZY_VARIANT_PAY_PER_DOWNLOAD`
 - Used by the public **invoice generator** at `/invoice` (no login) and by signed-in users downloading individual PDFs.
 
@@ -86,7 +108,7 @@ npm run dev
 
 1. **Sign up** → billing onboarding → choose Pro or Pay-per-download → complete Lemon Squeezy checkout
 2. **Pro user** → Invoices → Download PDF → no charge
-3. **Pay-per-download user** → Download → paywall → pay $11.39 → redirect back → PDF downloads
+3. **Pay-per-download user** → Download → paywall → pay $9.99 → redirect back → PDF downloads
 4. **Settings → Billing & plan** → Upgrade / Manage billing (customer portal)
 
 ## User flows (summary)
@@ -94,12 +116,12 @@ npm run dev
 ```
 Signup → BillingOnboarding (card required)
   ├─ Pro → LS subscription checkout → unlimited downloads
-  └─ Pay-per-download → LS card setup checkout → $11.39 per PDF download
+  └─ Pay-per-download → LS card setup checkout → $9.99 per PDF download
 
 Download invoice/paystub
   ├─ Pro active → download immediately
   ├─ Entitlement exists → download immediately
-  └─ Else → Paywall → LS checkout $11.39 → webhook → entitlement → download
+  └─ Else → Paywall → LS checkout $9.99 → webhook → entitlement → download
 ```
 
 ## API routes
