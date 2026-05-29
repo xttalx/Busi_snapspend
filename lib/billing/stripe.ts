@@ -62,7 +62,10 @@ export async function createGuestStripeCheckout(
       transaction_id: params.transactionId,
     },
     success_url: successUrl,
-    cancel_url: `${site}/invoice?canceled=1`,
+    cancel_url:
+      `${site}/invoice?canceled=1` +
+      `&guest_token=${encodeURIComponent(params.guestToken)}` +
+      `&document_id=${encodeURIComponent(params.documentId)}`,
   });
 
   if (!session.url) throw new Error("Stripe checkout URL missing.");

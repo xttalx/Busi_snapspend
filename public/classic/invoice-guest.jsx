@@ -1,5 +1,6 @@
 /* Public invoice generator — no login: fill form → preview → pay → download */
 const GUEST_DRAFT_KEY = "marten_guest_invoice_draft";
+const GUEST_PENDING_KEY = "marten_guest_invoice_pending";
 const GUEST_TOKEN_KEY = "marten_guest_token";
 
 function guestId() {
@@ -33,6 +34,64 @@ function loadGuestDraft() {
 function saveGuestDraft(draft) {
   try {
     sessionStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify(draft));
+  } catch (_e) {}
+}
+
+function readReturnParams() {
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("billing") !== "download_ready") return null;
+  const guestToken = q.get("guest_token")?.trim();
+  const documentId = q.get("document_id")?.trim();
+  const stripeSessionId = q.get("session_id")?.trim() || null;
+  if (!guestToken || !documentId) return null;
+  return { guestToken, documentId, stripeSessionId };
+}
+
+/** Restore the invoice the user paid for — never mix with another session's draft. */
+function restoreGuestDraftForPayment(guestToken, documentId) {
+  try {
+    const pendingRaw = sessionStorage.getItem(GUEST_PENDING_KEY);
+    if (pendingRaw) {
+      const pending = JSON.parse(pendingRaw);
+      if (pending.guestToken === guestToken && pending.documentId === documentId && pending.draft) {
+        return pending.draft;
+      }
+    }
+    const saved = loadGuestDraft();
+    if (
+      saved?.documentId === documentId &&
+      saved?.guestToken === guestToken &&
+      saved.invoice &&
+      saved.client &&
+      saved.business
+    ) {
+      return saved;
+    }
+  } catch (_e) {}
+  return null;
+}
+
+/** Lock draft to this checkout before leaving for Stripe / Lemon. */
+function persistCheckoutDraft(draft) {
+  if (!draft?.documentId || !draft?.guestToken) return;
+  saveGuestDraft(draft);
+  try {
+    sessionStorage.setItem(
+      GUEST_PENDING_KEY,
+      JSON.stringify({
+        guestToken: draft.guestToken,
+        documentId: draft.documentId,
+        draft,
+        savedAt: Date.now(),
+      })
+    );
+    sessionStorage.setItem(GUEST_TOKEN_KEY, draft.guestToken);
+  } catch (_e) {}
+}
+
+function clearCheckoutPending() {
+  try {
+    sessionStorage.removeItem(GUEST_PENDING_KEY);
   } catch (_e) {}
 }
 
@@ -107,8 +166,27 @@ function GuestInvoiceApp() {
   const [paywallBusy, setPaywallBusy] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState(null);
   const [paidReady, setPaidReady] = React.useState(false);
+  /** Invoice snapshot to PDF after React paints restored draft (post-Stripe). */
+  const [paidDraftToDownload, setPaidDraftToDownload] = React.useState(null);
+
+  const returnParams = React.useMemo(() => readReturnParams(), []);
+  const postPaymentStarted = React.useRef(false);
 
   const [draft, setDraft] = React.useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("canceled") === "1") {
+      const gt = q.get("guest_token")?.trim();
+      const did = q.get("document_id")?.trim();
+      if (gt && did) {
+        const restored = restoreGuestDraftForPayment(gt, did);
+        if (restored) return restored;
+      }
+    }
+    const returning = readReturnParams();
+    if (returning) {
+      const restored = restoreGuestDraftForPayment(returning.guestToken, returning.documentId);
+      if (restored) return restored;
+    }
     const saved = loadGuestDraft();
     if (saved?.documentId && saved.invoice && saved.client && saved.business) {
       return { ...saved, guestToken: saved.guestToken || getGuestToken() };
@@ -116,6 +194,9 @@ function GuestInvoiceApp() {
     const documentId = guestId();
     return defaultGuestWorkspace(documentId);
   });
+
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
 
   React.useEffect(() => {
     saveGuestDraft(draft);
@@ -138,8 +219,9 @@ function GuestInvoiceApp() {
     setDraft((d) => ({ ...d, invoice }));
   };
 
-  const runDownload = async () => {
-    const { invoice, client, business } = draft;
+  const runDownload = async (draftSnapshot) => {
+    const source = draftSnapshot || draftRef.current;
+    const { invoice, client, business } = source;
     if (!client.name?.trim()) {
       toast("Add your client's name before downloading.");
       setMode("edit");
@@ -208,6 +290,9 @@ function GuestInvoiceApp() {
         return;
       }
 
+      let checkoutDraft = { ...draft, documentId, guestToken };
+      persistCheckoutDraft(checkoutDraft);
+
       const email = draft.business.email?.trim() || draft.client.email?.trim() || "";
       const { checkoutUrl, guestToken: token } = await window.MartenBilling.guestCheckout(
         documentId,
@@ -215,8 +300,9 @@ function GuestInvoiceApp() {
         email
       );
       if (token && token !== guestToken) {
-        setDraft((d) => ({ ...d, guestToken: token }));
-        try { sessionStorage.setItem(GUEST_TOKEN_KEY, token); } catch (_e) {}
+        checkoutDraft = { ...checkoutDraft, guestToken: token };
+        setDraft(checkoutDraft);
+        persistCheckoutDraft(checkoutDraft);
       }
       setPaywall({ open: true, checkoutUrl });
     } catch (e) {
@@ -225,20 +311,21 @@ function GuestInvoiceApp() {
   };
 
   React.useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("billing") !== "download_ready") return;
+    if (!returnParams || postPaymentStarted.current) return;
+    postPaymentStarted.current = true;
 
-    const guestToken = q.get("guest_token");
-    const documentId = q.get("document_id");
-    const stripeSessionId = q.get("session_id");
-    if (!guestToken || !documentId) return;
+    const { guestToken, documentId, stripeSessionId } = returnParams;
+    const restored = restoreGuestDraftForPayment(guestToken, documentId);
 
-    setDraft((d) => ({
-      ...d,
-      guestToken,
-      documentId,
-      invoice: d.invoice ? { ...d.invoice, id: documentId } : d.invoice,
-    }));
+    if (!restored) {
+      toast("Could not restore your invoice for this payment. Use the same browser tab you paid from.");
+      window.history.replaceState({}, "", "/invoice");
+      return;
+    }
+
+    setDraft(restored);
+    draftRef.current = restored;
+    saveGuestDraft(restored);
 
     (async () => {
       try {
@@ -251,14 +338,39 @@ function GuestInvoiceApp() {
         }
         setPaidReady(true);
         setMode("preview");
-        await runDownload();
+        setPaidDraftToDownload(restored);
       } catch (err) {
         console.error("Post-payment download failed:", err);
         window.history.replaceState({}, "", "/invoice");
         toast(err?.message || "Download failed. Click Pay & download to try again.");
       }
     })();
-  }, []);
+  }, [returnParams]);
+
+  React.useEffect(() => {
+    if (!paidDraftToDownload) return;
+    if (draftRef.current.documentId !== paidDraftToDownload.documentId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await waitForPreviewElement(invoicePreviewRef);
+        if (cancelled) return;
+        await runDownload(paidDraftToDownload);
+        clearCheckoutPending();
+        if (!cancelled) setPaidDraftToDownload(null);
+      } catch (err) {
+        console.error("Post-payment download failed:", err);
+        if (!cancelled) {
+          toast(err?.message || "Download failed. Click Pay & download to try again.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paidDraftToDownload, draft]);
 
   const dlPrice = window.MartenBilling?.formatPayPerDownload
     ? window.MartenBilling.formatPayPerDownload()
@@ -444,6 +556,7 @@ function GuestInvoiceApp() {
             setMode("edit");
             return;
           }
+          persistCheckoutDraft(draftRef.current);
           if (!paywall.checkoutUrl) return;
           setPaywallBusy(true);
           window.location.href = paywall.checkoutUrl;
