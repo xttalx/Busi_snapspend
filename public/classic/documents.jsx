@@ -59,7 +59,15 @@ async function downloadPreviewPdfFromElement(element, fileName) {
       },
       pagebreak: { mode: ["css", "legacy"] },
     };
-    await window.html2pdf().set(opts).from(target).save();
+    await new Promise((resolve, reject) => {
+      window
+        .html2pdf()
+        .set(opts)
+        .from(target)
+        .save()
+        .then(resolve)
+        .catch(reject);
+    });
     return;
   }
 

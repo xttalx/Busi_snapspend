@@ -16,13 +16,28 @@ export async function getGuestDownloadState(
   guestToken: string,
   documentId: string
 ): Promise<GuestDownloadState> {
-  const { data } = await admin
+  let data: { status?: string; downloaded_at?: string | null } | null = null;
+
+  const full = await admin
     .from("guest_download_sessions")
     .select("status, downloaded_at")
     .eq("guest_token", guestToken)
     .eq("document_id", documentId)
     .eq("document_type", "invoice")
     .maybeSingle();
+
+  if (full.error?.message?.includes("downloaded_at")) {
+    const fallback = await admin
+      .from("guest_download_sessions")
+      .select("status")
+      .eq("guest_token", guestToken)
+      .eq("document_id", documentId)
+      .eq("document_type", "invoice")
+      .maybeSingle();
+    data = fallback.data;
+  } else {
+    data = full.data;
+  }
 
   const paid = data?.status === "paid";
   const downloaded = Boolean(data?.downloaded_at);

@@ -293,14 +293,16 @@ function GuestInvoiceApp() {
     saveGuestDraft(fresh);
   };
 
-  const runDownload = async (draftSnapshot, { skipPaymentCheck } = {}) => {
+  const runDownload = async (draftSnapshot, { skipPaymentCheck, skipValidation } = {}) => {
     const source = draftSnapshot || draftRef.current;
     const { invoice, client, business } = source;
 
-    const validation = validateDraft(source);
-    if (!validation.ok) {
-      showValidationIssues(validation);
-      return false;
+    if (!skipValidation) {
+      const validation = validateDraft(source);
+      if (!validation.ok) {
+        showValidationIssues(validation);
+        return false;
+      }
     }
 
     if (window.MartenBilling?.guestDownloadStatus) {
@@ -313,14 +315,23 @@ function GuestInvoiceApp() {
         resetToBlankForm();
         return false;
       }
-      if (!skipPaymentCheck && !status.allowed) {
+      const paidOk = status.allowed || (status.paid && !status.downloaded);
+      if (!skipPaymentCheck && !paidOk) {
         toast("Complete payment before downloading this invoice.");
+        return false;
+      }
+      if (skipPaymentCheck && !status.paid && !paidOk) {
+        toast("Payment is still processing. Wait a moment, then tap Download PDF.");
         return false;
       }
     }
 
     setDownloadBusy(true);
     try {
+      setDraft(source);
+      draftRef.current = source;
+      setMode("preview");
+      await new Promise((r) => setTimeout(r, 200));
       await waitForPreviewElement(invoicePreviewRef);
       await waitForPreviewContent(invoicePreviewRef, business.name);
       await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
@@ -357,7 +368,8 @@ function GuestInvoiceApp() {
           documentId,
           stripeSessionId
         );
-        if (status.allowed) {
+        const ready = status.allowed || (status.paid && !status.downloaded);
+        if (ready) {
           return {
             allowed: true,
             guestToken: status.guestToken || guestToken,
@@ -374,10 +386,20 @@ function GuestInvoiceApp() {
 
   const triggerPaidDownload = async (draftSnapshot) => {
     const runId = ++downloadRunId.current;
+    setDraft(draftSnapshot);
+    draftRef.current = draftSnapshot;
+    setPaidReady(true);
     setMode("preview");
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 250));
     if (runId !== downloadRunId.current) return;
-    await runDownload(draftSnapshot, { skipPaymentCheck: true });
+    const ok = await runDownload(draftSnapshot, {
+      skipPaymentCheck: true,
+      skipValidation: true,
+    });
+    if (!ok && runId === downloadRunId.current) {
+      toast("Tap Download PDF below — some browsers require a click to save the file.");
+    }
+    return ok;
   };
 
   const validateDraft = (source) => {
@@ -478,8 +500,10 @@ function GuestInvoiceApp() {
               draftRef.current = fromStripe;
             }
           }
-          setPaidReady(true);
-          await triggerPaidDownload(draftToUse);
+          const ok = await triggerPaidDownload(draftToUse);
+          if (!ok) {
+            toast("Payment confirmed — tap Download PDF below to save your invoice.");
+          }
           return;
         }
 
@@ -529,7 +553,12 @@ function GuestInvoiceApp() {
                 type="button"
                 className="btn primary"
                 disabled={downloadBusy}
-                onClick={() => triggerPaidDownload(draftRef.current)}
+                onClick={() =>
+                  runDownload(draftRef.current, {
+                    skipPaymentCheck: true,
+                    skipValidation: true,
+                  })
+                }
               >
                 <Icon name="download" size={14} /> {downloadBusy ? "Preparing PDF…" : "Download PDF"}
               </button>
