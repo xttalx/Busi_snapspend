@@ -15,8 +15,22 @@ const fmtDate = (iso) => {
 window.fmtMoney = fmtMoney;
 window.fmtDate = fmtDate;
 
+function pdfCaptureTarget(element) {
+  if (!element) return null;
+  return element.querySelector?.(".doc-shell") || element;
+}
+
+function fixPdfCloneVisibility(clonedDoc) {
+  clonedDoc.querySelectorAll(".invoice-lite-pdf-source").forEach((node) => {
+    node.style.cssText =
+      "position:static;left:auto;top:auto;visibility:visible;opacity:1;width:8.5in;max-width:8.5in;overflow:visible;z-index:auto;pointer-events:none;";
+    node.removeAttribute("aria-hidden");
+  });
+}
+
 async function downloadPreviewPdfFromElement(element, fileName) {
-  if (!element) {
+  const target = pdfCaptureTarget(element);
+  if (!target) {
     throw new Error("Preview document not found.");
   }
   if (window.html2pdf) {
@@ -28,6 +42,7 @@ async function downloadPreviewPdfFromElement(element, fileName) {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
+        onclone: (clonedDoc) => fixPdfCloneVisibility(clonedDoc),
       },
       jsPDF: {
         unit: "in",
@@ -36,7 +51,7 @@ async function downloadPreviewPdfFromElement(element, fileName) {
       },
       pagebreak: { mode: ["css", "legacy"] },
     };
-    await window.html2pdf().set(opts).from(element).save();
+    await window.html2pdf().set(opts).from(target).save();
     return;
   }
 
@@ -48,8 +63,8 @@ async function downloadPreviewPdfFromElement(element, fileName) {
   const doc = new jsPDF({ orientation: "portrait", unit: "in", format: [8.5, 11], compress: true });
   const margin = 0.35;
   const contentWidth = 8.5 - margin * 2;
-  const windowWidth = Math.max(element.scrollWidth || 0, element.clientWidth || 0, 900);
-  await doc.html(element, {
+  const windowWidth = Math.max(target.scrollWidth || 0, target.clientWidth || 0, 900);
+  await doc.html(target, {
     x: margin,
     y: margin,
     width: contentWidth,

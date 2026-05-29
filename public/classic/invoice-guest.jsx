@@ -96,13 +96,33 @@ function clearCheckoutPending() {
 }
 
 /** Wait until the off-screen invoice preview is mounted (needed after Stripe redirect). */
-function waitForPreviewElement(ref, timeoutMs = 5000) {
+function waitForPreviewElement(ref, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const tick = () => {
       if (ref.current) return resolve(ref.current);
       if (Date.now() - start > timeoutMs) {
-        return reject(new Error("Invoice preview not ready. Click Pay & download to try again."));
+        return reject(new Error("Invoice preview not ready. Click Download PDF to try again."));
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
+/** Wait until React has painted invoice content into the PDF capture node. */
+function waitForPreviewContent(ref, businessName, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const needle = (businessName || "").trim();
+    const start = Date.now();
+    const tick = () => {
+      const el = ref.current;
+      const shell = el?.querySelector?.(".doc-shell") || el;
+      if (shell && (!needle || shell.textContent.includes(needle))) {
+        return resolve(shell);
+      }
+      if (Date.now() - start > timeoutMs) {
+        return reject(new Error("Invoice preview not ready. Click Download PDF to try again."));
       }
       requestAnimationFrame(tick);
     };
@@ -166,11 +186,11 @@ function GuestInvoiceApp() {
   const [paywallBusy, setPaywallBusy] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState(null);
   const [paidReady, setPaidReady] = React.useState(false);
-  /** Invoice snapshot to PDF after React paints restored draft (post-Stripe). */
-  const [paidDraftToDownload, setPaidDraftToDownload] = React.useState(null);
+  const [downloadBusy, setDownloadBusy] = React.useState(false);
 
   const returnParams = React.useMemo(() => readReturnParams(), []);
   const postPaymentStarted = React.useRef(false);
+  const downloadRunId = React.useRef(0);
 
   const [draft, setDraft] = React.useState(() => {
     const q = new URLSearchParams(window.location.search);
@@ -219,42 +239,81 @@ function GuestInvoiceApp() {
     setDraft((d) => ({ ...d, invoice }));
   };
 
-  const runDownload = async (draftSnapshot) => {
+  const runDownload = async (draftSnapshot, { skipPaidCheck } = {}) => {
     const source = draftSnapshot || draftRef.current;
     const { invoice, client, business } = source;
     if (!client.name?.trim()) {
       toast("Add your client's name before downloading.");
       setMode("edit");
-      return;
+      return false;
     }
     if (!business.name?.trim()) {
       toast("Add your business name before downloading.");
       setMode("edit");
-      return;
+      return false;
     }
+
+    if (!skipPaidCheck && window.MartenBilling?.guestDownloadStatus) {
+      const status = await window.MartenBilling.guestDownloadStatus(
+        source.guestToken,
+        source.documentId
+      );
+      if (!status.allowed) {
+        toast("Complete payment before downloading this invoice.");
+        return false;
+      }
+    }
+
+    setDownloadBusy(true);
     try {
       await waitForPreviewElement(invoicePreviewRef);
+      await waitForPreviewContent(invoicePreviewRef, business.name);
       await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
       toast("Invoice PDF downloaded.");
+      return true;
     } catch (err) {
       console.error(err);
       toast(err?.message || "Download failed.");
-      throw err;
+      return false;
+    } finally {
+      setDownloadBusy(false);
     }
   };
 
   const waitForPayment = async (guestToken, documentId, stripeSessionId) => {
-    if (!window.MartenBilling?.guestDownloadStatus) return false;
-    for (let i = 0; i < 25; i++) {
-      const status = await window.MartenBilling.guestDownloadStatus(
-        guestToken,
-        documentId,
-        stripeSessionId
-      );
-      if (status.allowed) return true;
-      await new Promise((r) => setTimeout(r, 2000));
+    if (!window.MartenBilling?.guestDownloadStatus) return { allowed: true };
+
+    const attempts = stripeSessionId ? 12 : 20;
+    const delayMs = stripeSessionId ? 600 : 2000;
+
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const status = await window.MartenBilling.guestDownloadStatus(
+          guestToken,
+          documentId,
+          stripeSessionId
+        );
+        if (status.allowed) {
+          return {
+            allowed: true,
+            guestToken: status.guestToken || guestToken,
+            documentId: status.documentId || documentId,
+          };
+        }
+      } catch (err) {
+        console.warn("Payment status check failed:", err);
+      }
+      await new Promise((r) => setTimeout(r, i === 0 ? 200 : delayMs));
     }
-    return false;
+    return { allowed: false };
+  };
+
+  const triggerPaidDownload = async (draftSnapshot) => {
+    const runId = ++downloadRunId.current;
+    setMode("preview");
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (runId !== downloadRunId.current) return;
+    await runDownload(draftSnapshot, { skipPaidCheck: true });
   };
 
   const validateBeforeCheckout = () => {
@@ -286,7 +345,7 @@ function GuestInvoiceApp() {
       const status = await window.MartenBilling.guestDownloadStatus(guestToken, documentId);
       if (status.allowed) {
         setPaidReady(true);
-        await runDownload();
+        await triggerPaidDownload(draft);
         return;
       }
 
@@ -330,47 +389,40 @@ function GuestInvoiceApp() {
     (async () => {
       try {
         toast("Payment received — preparing your download…");
-        const ok = await waitForPayment(guestToken, documentId, stripeSessionId);
+        const payment = await waitForPayment(guestToken, documentId, stripeSessionId);
         window.history.replaceState({}, "", "/invoice");
-        if (!ok) {
-          toast("Payment is processing. Click Pay & download again in a moment.");
+
+        let draftToUse = restored;
+        if (payment.allowed) {
+          if (
+            payment.guestToken &&
+            payment.documentId &&
+            (payment.guestToken !== guestToken || payment.documentId !== documentId)
+          ) {
+            const fromStripe = restoreGuestDraftForPayment(payment.guestToken, payment.documentId);
+            if (fromStripe) {
+              draftToUse = fromStripe;
+              setDraft(fromStripe);
+              draftRef.current = fromStripe;
+            }
+          }
+          setPaidReady(true);
+          const ok = await triggerPaidDownload(draftToUse);
+          if (ok) clearCheckoutPending();
           return;
         }
+
+        toast("Payment confirmed — tap Download PDF below.");
         setPaidReady(true);
         setMode("preview");
-        setPaidDraftToDownload(restored);
       } catch (err) {
-        console.error("Post-payment download failed:", err);
+        console.error("Post-payment flow failed:", err);
         window.history.replaceState({}, "", "/invoice");
-        toast(err?.message || "Download failed. Click Pay & download to try again.");
+        toast(err?.message || "Download failed. Tap Download PDF below.");
+        setPaidReady(true);
       }
     })();
   }, [returnParams]);
-
-  React.useEffect(() => {
-    if (!paidDraftToDownload) return;
-    if (draftRef.current.documentId !== paidDraftToDownload.documentId) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        await waitForPreviewElement(invoicePreviewRef);
-        if (cancelled) return;
-        await runDownload(paidDraftToDownload);
-        clearCheckoutPending();
-        if (!cancelled) setPaidDraftToDownload(null);
-      } catch (err) {
-        console.error("Post-payment download failed:", err);
-        if (!cancelled) {
-          toast(err?.message || "Download failed. Click Pay & download to try again.");
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [paidDraftToDownload, draft]);
 
   const dlPrice = window.MartenBilling?.formatPayPerDownload
     ? window.MartenBilling.formatPayPerDownload()
@@ -399,6 +451,19 @@ function GuestInvoiceApp() {
             No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) via Stripe to download the PDF.
             {paidReady ? " Your payment is confirmed for this invoice." : null}
           </p>
+          {paidReady ? (
+            <div className="invoice-lite-paid-banner">
+              <p>Your payment succeeded. Download your PDF below.</p>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={downloadBusy}
+                onClick={() => triggerPaidDownload(draftRef.current)}
+              >
+                <Icon name="download" size={14} /> {downloadBusy ? "Preparing PDF…" : "Download PDF"}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="invoice-lite-steps">
@@ -564,7 +629,7 @@ function GuestInvoiceApp() {
       />
 
       {/* Always mounted so PDF export works after Stripe redirect (edit mode has no visible preview). */}
-      <div className="invoice-lite-pdf-source" aria-hidden="true">
+      <div className="invoice-lite-pdf-source">
         <div ref={invoicePreviewRef}>
           <InvoiceDocument invoice={invoice} client={client} business={business} />
         </div>

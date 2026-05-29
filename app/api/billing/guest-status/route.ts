@@ -26,28 +26,34 @@ export async function GET(request: Request) {
   const admin = getSupabaseAdmin();
   let allowed = await isGuestDownloadPaid(admin, guestToken, documentId);
 
+  let resolvedGuest = guestToken;
+  let resolvedDoc = documentId;
+
   if (!allowed && sessionId && isStripeGuestConfigured()) {
     try {
       const verified = await verifyGuestStripeSession(sessionId);
-      if (
-        verified.paid &&
-        verified.guestToken === guestToken &&
-        verified.documentId === documentId
-      ) {
+      if (verified.paid && verified.guestToken && verified.documentId) {
         await markGuestSessionPaid(
           admin,
-          guestToken,
-          documentId,
+          verified.guestToken,
+          verified.documentId,
           sessionId,
           verified.transactionId,
           sessionId
         );
         allowed = true;
+        resolvedGuest = verified.guestToken;
+        resolvedDoc = verified.documentId;
       }
     } catch (err) {
       console.error("Stripe session verify failed:", err);
     }
   }
 
-  return Response.json({ allowed, reason: allowed ? "paid" : "pending" });
+  return Response.json({
+    allowed,
+    reason: allowed ? "paid" : "pending",
+    guestToken: allowed ? resolvedGuest : undefined,
+    documentId: allowed ? resolvedDoc : undefined,
+  });
 }

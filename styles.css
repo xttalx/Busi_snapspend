@@ -2327,14 +2327,34 @@ input[type="number"] { -moz-appearance: textfield; }
   margin: 0 0 12px;
 }
 
+/* Off-screen but paintable — visibility:hidden breaks html2pdf/html2canvas */
 .invoice-lite-pdf-source {
   position: fixed;
-  left: -10000px;
+  left: 0;
   top: 0;
   width: 8.5in;
+  max-width: 8.5in;
   pointer-events: none;
-  visibility: hidden;
-  overflow: hidden;
+  opacity: 0.01;
+  z-index: -1;
+  overflow: visible;
+}
+
+.invoice-lite-paid-banner {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, var(--rule));
+  border-radius: var(--r-md);
+  background: color-mix(in oklch, var(--accent) 8%, var(--paper));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.invoice-lite-paid-banner p {
+  margin: 0;
+  flex: 1 1 200px;
 }
 
 .invoice-lite-preview {
