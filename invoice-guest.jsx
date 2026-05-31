@@ -101,6 +101,103 @@ function clearGuestDraftStorage() {
   } catch (_e) {}
 }
 
+const DOWNLOAD_MODAL_IDLE = {
+  open: false,
+  phase: "idle",
+  message: "",
+  error: null,
+  fileName: "invoice.pdf",
+};
+
+const DOWNLOAD_PHASE_HINTS = {
+  confirming: "Confirming your payment with Stripe…",
+  checking: "Verifying your download…",
+  preparing: "Loading your invoice…",
+  rendering: "Rendering invoice layout…",
+  generating: "Generating PDF — usually 10–25 seconds…",
+  saving: "Finalizing…",
+  ready: "Your PDF is ready. Tap the button below to save it.",
+  done: "Saved to your device. You can create another invoice.",
+};
+
+function GuestDownloadModal({ open, phase, message, error, fileName, busy, onDownload, onDismiss }) {
+  if (!open) return null;
+
+  const isDone = phase === "done";
+  const isReady = phase === "ready";
+  const isError = phase === "error";
+  const showSpinner = !isDone && !isReady && !isError;
+  const title = isDone
+    ? "Download complete"
+    : isReady
+      ? "Your PDF is ready"
+      : isError
+        ? "Download unavailable"
+        : "Preparing your invoice PDF";
+
+  return (
+    <>
+      <div className="modal-scrim guest-download-modal-scrim" aria-hidden="true" />
+      <div
+        className="modal billing-modal guest-download-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="guest-download-modal-title"
+        aria-busy={showSpinner || busy}
+      >
+        <div className="modal-head">
+          <div>
+            <h3 id="guest-download-modal-title">{title}</h3>
+            <p className="modal-sub">
+              {isReady || isDone ? (
+                <>
+                  File: <b>{fileName || "invoice.pdf"}</b>
+                </>
+              ) : (
+                "Please keep this window open until your PDF is saved."
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="modal-body guest-download-modal-body">
+          {showSpinner ? (
+            <div className="guest-download-spinner" aria-hidden="true" />
+          ) : null}
+          <p className="guest-download-status-text">
+            {message || DOWNLOAD_PHASE_HINTS[phase] || "Working…"}
+          </p>
+          {error ? <p className="guest-download-error-text">{error}</p> : null}
+          {phase === "generating" ? (
+            <p className="guest-download-hint">Large invoices may take a little longer.</p>
+          ) : null}
+        </div>
+        <div className="modal-foot guest-download-modal-foot">
+          {isReady ? (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy}
+              onClick={onDownload}
+            >
+              <Icon name="download" size={14} /> {busy ? "Preparing…" : "Download PDF"}
+            </button>
+          ) : null}
+          {isDone ? (
+            <button type="button" className="btn primary" onClick={onDismiss}>
+              Create another invoice
+            </button>
+          ) : null}
+          {isError ? (
+            <button type="button" className="btn" onClick={onDismiss}>
+              Back to form
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
 /** Wait until the off-screen invoice preview is mounted (needed after Stripe redirect). */
 function waitForPreviewElement(ref, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
@@ -193,10 +290,43 @@ function GuestInvoiceApp() {
   const [toastMsg, setToastMsg] = React.useState(null);
   const [paidReady, setPaidReady] = React.useState(false);
   const [downloadBusy, setDownloadBusy] = React.useState(false);
+  const [downloadModal, setDownloadModal] = React.useState(DOWNLOAD_MODAL_IDLE);
   const [fieldErrors, setFieldErrors] = React.useState({});
   const [validationModal, setValidationModal] = React.useState({ open: false, issues: [] });
 
   const returnParams = React.useMemo(() => readReturnParams(), []);
+
+  const pdfFileName = (snap) => {
+    const n = snap?.invoice?.number?.trim();
+    return n ? `${n}.pdf` : "invoice.pdf";
+  };
+
+  const closeDownloadModal = () => setDownloadModal(DOWNLOAD_MODAL_IDLE);
+
+  const openDownloadModal = (patch) =>
+    setDownloadModal((m) => ({
+      ...DOWNLOAD_MODAL_IDLE,
+      open: true,
+      phase: "confirming",
+      message: DOWNLOAD_PHASE_HINTS.confirming,
+      error: null,
+      fileName: pdfFileName(draftRef.current),
+      ...patch,
+    }));
+
+  const setDownloadPhase = (phase, extra = {}) =>
+    setDownloadModal((m) =>
+      m.open
+        ? {
+            ...m,
+            phase,
+            message: extra.message ?? DOWNLOAD_PHASE_HINTS[phase] ?? m.message,
+            error: extra.error !== undefined ? extra.error : m.error,
+            fileName: extra.fileName ?? m.fileName,
+          }
+        : m
+    );
+
   const postPaymentStarted = React.useRef(false);
   const downloadRunId = React.useRef(0);
 
@@ -286,11 +416,17 @@ function GuestInvoiceApp() {
     setDraft(fresh);
     draftRef.current = fresh;
     setPaidReady(false);
+    closeDownloadModal();
     setMode("edit");
     setPaywall({ open: false, checkoutUrl: null });
     setFieldErrors({});
     setValidationModal({ open: false, issues: [] });
     saveGuestDraft(fresh);
+  };
+
+  const dismissDownloadModal = () => {
+    if (downloadModal.phase === "done") resetToBlankForm();
+    else closeDownloadModal();
   };
 
   const runDownload = async (draftSnapshot, { skipPaymentCheck, skipValidation } = {}) => {
@@ -304,6 +440,8 @@ function GuestInvoiceApp() {
         return false;
       }
     }
+
+    if (downloadModal.open) setDownloadPhase("checking");
 
     if (window.MartenBilling?.guestDownloadStatus) {
       const status = await window.MartenBilling.guestDownloadStatus(
@@ -327,15 +465,19 @@ function GuestInvoiceApp() {
     }
 
     setDownloadBusy(true);
+    setDownloadPhase("preparing", { fileName: pdfFileName(source) });
     try {
       setDraft(source);
       draftRef.current = source;
       setMode("preview");
-      await new Promise((r) => setTimeout(r, 200));
+      setDownloadPhase("rendering");
+      await new Promise((r) => setTimeout(r, 120));
       await waitForPreviewElement(invoicePreviewRef);
       await waitForPreviewContent(invoicePreviewRef, business.name);
+      setDownloadPhase("generating");
       await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
 
+      setDownloadPhase("saving");
       if (window.MartenBilling?.completeGuestDownload) {
         await window.MartenBilling.completeGuestDownload(
           source.guestToken,
@@ -343,12 +485,15 @@ function GuestInvoiceApp() {
         );
       }
 
-      toast("Invoice PDF downloaded. You can create another invoice below.");
-      resetToBlankForm();
+      setDownloadPhase("done", { message: DOWNLOAD_PHASE_HINTS.done });
       return true;
     } catch (err) {
       console.error(err);
-      toast(err?.message || "Download failed.");
+      const msg = err?.message || "Download failed.";
+      setDownloadPhase("ready", {
+        message: "Tap Download PDF to try again.",
+        error: msg,
+      });
       return false;
     } finally {
       setDownloadBusy(false);
@@ -384,22 +529,37 @@ function GuestInvoiceApp() {
     return { allowed: false };
   };
 
-  const triggerPaidDownload = async (draftSnapshot) => {
+  const triggerPaidDownload = async (draftSnapshot, { autoStart = true } = {}) => {
     const runId = ++downloadRunId.current;
     setDraft(draftSnapshot);
     draftRef.current = draftSnapshot;
     setPaidReady(true);
     setMode("preview");
-    await new Promise((r) => setTimeout(r, 250));
-    if (runId !== downloadRunId.current) return;
-    const ok = await runDownload(draftSnapshot, {
+    openDownloadModal({
+      phase: autoStart ? "preparing" : "ready",
+      message: autoStart
+        ? DOWNLOAD_PHASE_HINTS.preparing
+        : DOWNLOAD_PHASE_HINTS.ready,
+      fileName: pdfFileName(draftSnapshot),
+    });
+    if (!autoStart) return false;
+
+    await new Promise((r) => setTimeout(r, 100));
+    if (runId !== downloadRunId.current) return false;
+
+    if (runId !== downloadRunId.current) return false;
+    return runDownload(draftSnapshot, {
       skipPaymentCheck: true,
       skipValidation: true,
     });
-    if (!ok && runId === downloadRunId.current) {
-      toast("Tap Download PDF below — some browsers require a click to save the file.");
-    }
-    return ok;
+  };
+
+  const handleModalDownload = async () => {
+    if (downloadBusy) return;
+    await runDownload(draftRef.current, {
+      skipPaymentCheck: true,
+      skipValidation: true,
+    });
   };
 
   const validateDraft = (source) => {
@@ -470,8 +630,17 @@ function GuestInvoiceApp() {
     const { guestToken, documentId, stripeSessionId } = returnParams;
     const restored = restoreGuestDraftForPayment(guestToken, documentId);
 
+    openDownloadModal({
+      phase: "confirming",
+      message: "Payment received. Confirming with Stripe…",
+      fileName: pdfFileName(restored || draftRef.current),
+    });
+
     if (!restored) {
-      toast("Could not restore your invoice for this payment. Use the same browser tab you paid from.");
+      setDownloadPhase("error", {
+        message: "Could not restore your invoice for this payment.",
+        error: "Use the same browser and tab where you started checkout (martenbooks.com).",
+      });
       window.history.replaceState({}, "", "/invoice");
       return;
     }
@@ -482,7 +651,6 @@ function GuestInvoiceApp() {
 
     (async () => {
       try {
-        toast("Payment received — preparing your download…");
         const payment = await waitForPayment(guestToken, documentId, stripeSessionId);
         window.history.replaceState({}, "", "/invoice");
 
@@ -500,21 +668,29 @@ function GuestInvoiceApp() {
               draftRef.current = fromStripe;
             }
           }
-          const ok = await triggerPaidDownload(draftToUse);
-          if (!ok) {
-            toast("Payment confirmed — tap Download PDF below to save your invoice.");
-          }
+          setDownloadPhase("preparing", {
+            message: "Payment confirmed. Building your PDF…",
+            fileName: pdfFileName(draftToUse),
+          });
+          await triggerPaidDownload(draftToUse, { autoStart: true });
           return;
         }
 
-        toast("Payment confirmed — tap Download PDF below.");
         setPaidReady(true);
         setMode("preview");
+        setDownloadPhase("ready", {
+          message: "Payment confirmed. Tap Download PDF to save your invoice.",
+          fileName: pdfFileName(draftToUse),
+        });
       } catch (err) {
         console.error("Post-payment flow failed:", err);
         window.history.replaceState({}, "", "/invoice");
-        toast(err?.message || "Download failed. Tap Download PDF below.");
         setPaidReady(true);
+        setDownloadPhase("ready", {
+          message: "Something went wrong. Tap Download PDF to try again.",
+          error: err?.message || "Download failed.",
+          fileName: pdfFileName(draftRef.current),
+        });
       }
     })();
   }, [returnParams]);
@@ -544,26 +720,7 @@ function GuestInvoiceApp() {
           <h1>Create your invoice</h1>
           <p>
             No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) via Stripe to download the PDF.
-            {paidReady ? " Your payment is confirmed — one PDF download per payment." : null}
           </p>
-          {paidReady ? (
-            <div className="invoice-lite-paid-banner">
-              <p>Your payment succeeded. Download your PDF once below.</p>
-              <button
-                type="button"
-                className="btn primary"
-                disabled={downloadBusy}
-                onClick={() =>
-                  runDownload(draftRef.current, {
-                    skipPaymentCheck: true,
-                    skipValidation: true,
-                  })
-                }
-              >
-                <Icon name="download" size={14} /> {downloadBusy ? "Preparing PDF…" : "Download PDF"}
-              </button>
-            </div>
-          ) : null}
         </div>
 
         <div className="invoice-lite-steps">
@@ -719,6 +876,17 @@ function GuestInvoiceApp() {
           </div>
         )}
       </main>
+
+      <GuestDownloadModal
+        open={downloadModal.open}
+        phase={downloadModal.phase}
+        message={downloadModal.message}
+        error={downloadModal.error}
+        fileName={downloadModal.fileName}
+        busy={downloadBusy}
+        onDownload={handleModalDownload}
+        onDismiss={dismissDownloadModal}
+      />
 
       {window.InvoiceValidationModal ? (
         <InvoiceValidationModal

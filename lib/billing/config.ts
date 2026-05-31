@@ -10,11 +10,22 @@ export const BILLING = {
 export type BillingPlan = "none" | "pro" | "pay_per_download";
 export type DocumentType = "invoice" | "paystub";
 
+const DEFAULT_SITE_URL = "https://martenbooks.com";
+
 export function getSiteUrl(): string {
-  const url =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-  return url.replace(/\/$/, "");
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  // Do not use VERCEL_URL — it exposes the legacy repo hostname (busi-snapspend.vercel.app).
+  if (process.env.NODE_ENV === "production") {
+    return DEFAULT_SITE_URL;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`.replace(/\/$/, "");
+  }
+
+  return "http://localhost:3000";
 }
 
 export function requireEnv(name: string): string {

@@ -45,7 +45,7 @@ async function downloadPreviewPdfFromElement(element, fileName) {
       filename: fileName,
       image: { type: "jpeg", quality: 0.98 },
       html2canvas: {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         backgroundColor: "#ffffff",
         windowWidth: PDF_LAYOUT_WIDTH_PX,
@@ -87,7 +87,7 @@ async function downloadPreviewPdfFromElement(element, fileName) {
     windowWidth,
     autoPaging: "text",
     html2canvas: {
-      scale: 2,
+      scale: 1.5,
       useCORS: true,
       backgroundColor: "#ffffff",
       windowWidth: PDF_LAYOUT_WIDTH_PX,
