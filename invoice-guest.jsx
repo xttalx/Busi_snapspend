@@ -471,9 +471,9 @@ function GuestInvoiceApp() {
       draftRef.current = source;
       setMode("preview");
       setDownloadPhase("rendering");
-      await new Promise((r) => setTimeout(r, 120));
-      await waitForPreviewElement(invoicePreviewRef);
-      await waitForPreviewContent(invoicePreviewRef, business.name);
+      await new Promise((r) => setTimeout(r, 80));
+      await waitForPreviewElement(invoicePreviewRef, 15000);
+      await waitForPreviewContent(invoicePreviewRef, business.name, 15000);
       setDownloadPhase("generating");
       await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
 
@@ -862,7 +862,7 @@ function GuestInvoiceApp() {
           </div>
         ) : (
           <div className="invoice-lite-preview">
-            <div>
+            <div ref={invoicePreviewRef}>
               <InvoiceDocument invoice={invoice} client={client} business={business} />
             </div>
             <div className="invoice-lite-preview-actions">
@@ -916,13 +916,6 @@ function GuestInvoiceApp() {
           window.location.href = paywall.checkoutUrl;
         }}
       />
-
-      {/* Always mounted so PDF export works after Stripe redirect (edit mode has no visible preview). */}
-      <div className="invoice-lite-pdf-source">
-        <div ref={invoicePreviewRef}>
-          <InvoiceDocument invoice={invoice} client={client} business={business} />
-        </div>
-      </div>
 
       {toastMsg && (
         <div className="toast invoice-lite-toast">

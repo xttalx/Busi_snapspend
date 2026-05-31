@@ -151,9 +151,15 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
   const runInvoicePdfDownload = async () => {
     if (mode !== "preview") {
       setMode("preview");
-      await new Promise((resolve) => setTimeout(resolve, 220));
+      await new Promise((resolve) => setTimeout(resolve, 80));
     }
-    await window.downloadInvoicePdf({ invoice: inv, element: invoicePreviewRef.current });
+    const ref = invoicePreviewRef;
+    const start = Date.now();
+    while (!ref.current && Date.now() - start < 15000) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!ref.current) throw new Error("Invoice preview not ready.");
+    await window.downloadInvoicePdf({ invoice: inv, element: ref.current });
     toast("Invoice PDF downloaded.");
     if (refreshBilling) refreshBilling();
   };
@@ -355,7 +361,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
               
               </div> :
 
-            <div ref={invoicePreviewRef}>
+            <div ref={invoicePreviewRef} className="invoice-pdf-capture">
               <InvoiceDocument invoice={inv} client={client} business={business} />
             </div>
             }

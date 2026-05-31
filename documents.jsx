@@ -23,14 +23,20 @@ function pdfCaptureTarget(element) {
 const PDF_LAYOUT_WIDTH_PX = 816; /* 8.5in at 96dpi — matches letter desktop layout */
 
 function fixPdfCloneVisibility(clonedDoc) {
-  clonedDoc.querySelectorAll(".invoice-lite-pdf-source").forEach((node) => {
+  const captureRoots = clonedDoc.querySelectorAll(
+    ".invoice-lite-preview, .invoice-pdf-capture, .invoice-lite-pdf-source"
+  );
+  captureRoots.forEach((node) => {
     node.style.cssText =
-      "position:static;left:auto;top:auto;visibility:visible;opacity:1;width:8.5in;min-width:8.5in;max-width:8.5in;overflow:visible;z-index:auto;pointer-events:none;";
+      "position:static;left:auto;top:auto;visibility:visible;opacity:1;overflow:visible;z-index:auto;pointer-events:none;";
     node.removeAttribute("aria-hidden");
   });
-  clonedDoc.querySelectorAll(".invoice-lite-pdf-source .doc-shell").forEach((shell) => {
+  clonedDoc.querySelectorAll(
+    ".invoice-lite-preview .doc-shell, .invoice-pdf-capture .doc-shell, .invoice-lite-pdf-source .doc-shell"
+  ).forEach((shell) => {
     shell.style.width = "8.5in";
     shell.style.maxWidth = "8.5in";
+    shell.style.boxSizing = "border-box";
   });
 }
 

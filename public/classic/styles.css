@@ -2327,69 +2327,74 @@ input[type="number"] { -moz-appearance: textfield; }
   margin: 0 0 12px;
 }
 
-/* Off-screen but paintable — visibility:hidden breaks html2pdf/html2canvas */
-.invoice-lite-pdf-source {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 8.5in;
-  min-width: 8.5in;
-  max-width: 8.5in;
-  pointer-events: none;
-  opacity: 0.01;
-  z-index: -1;
-  overflow: visible;
+/* Guest/lite preview — scroll on small screens; PDF captures this same node */
+.invoice-lite-preview {
+  overflow-x: auto;
+  max-width: 100%;
 }
 
-/* Letter PDF layout — fixed desktop columns regardless of viewport / tweaks */
-.invoice-lite-pdf-source .doc-shell {
+/* Letter layout — preview and PDF use the same element + rules (WYSIWYG) */
+.invoice-lite-preview .doc-shell,
+.invoice-pdf-capture .doc-shell {
   width: 8.5in;
   max-width: 8.5in;
   box-sizing: border-box;
 }
 
-.invoice-lite-pdf-source .doc-shell .head-block {
+.invoice-lite-preview .doc-shell .head-block,
+.invoice-pdf-capture .doc-shell .head-block {
   padding: 28px 32px;
   grid-template-columns: 1fr auto;
   gap: 20px;
 }
 
-.invoice-lite-pdf-source .doc-shell .head-block .doc-title {
+.invoice-lite-preview .doc-shell .head-block .doc-title,
+.invoice-pdf-capture .doc-shell .head-block .doc-title {
   font-size: 36px;
 }
 
-.invoice-lite-pdf-source .doc-shell .body-block {
+.invoice-lite-preview .doc-shell .body-block,
+.invoice-pdf-capture .doc-shell .body-block {
   padding: 28px 32px 36px;
 }
 
-.invoice-lite-pdf-source .doc-shell .parties {
+.invoice-lite-preview .doc-shell .parties,
+.invoice-pdf-capture .doc-shell .parties {
   grid-template-columns: 1fr 1fr;
   gap: 24px;
 }
 
-.invoice-lite-pdf-source .doc-shell .summary-grid {
+.invoice-lite-preview .doc-shell .summary-grid,
+.invoice-pdf-capture .doc-shell .summary-grid {
   grid-template-columns: repeat(3, 1fr);
 }
 
-.invoice-lite-pdf-source .doc-shell .summary-grid .cell,
-.invoice-lite-pdf-source .doc-shell .summary-grid .cell:first-child,
-.invoice-lite-pdf-source .doc-shell .summary-grid .cell:last-child,
-.invoice-lite-pdf-source .doc-shell .summary-grid .cell:not(:first-child) {
+.invoice-lite-preview .doc-shell .summary-grid .cell,
+.invoice-lite-preview .doc-shell .summary-grid .cell:first-child,
+.invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
+.invoice-lite-preview .doc-shell .summary-grid .cell:not(:first-child),
+.invoice-pdf-capture .doc-shell .summary-grid .cell,
+.invoice-pdf-capture .doc-shell .summary-grid .cell:first-child,
+.invoice-pdf-capture .doc-shell .summary-grid .cell:last-child,
+.invoice-pdf-capture .doc-shell .summary-grid .cell:not(:first-child) {
   border-right: 1px solid #e4e0d4;
   border-bottom: none;
   padding: 14px 16px 14px 0;
 }
 
-.invoice-lite-pdf-source .doc-shell .summary-grid .cell:last-child {
+.invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
+.invoice-pdf-capture .doc-shell .summary-grid .cell:last-child {
   border-right: none;
   padding-right: 0;
 }
 
-.invoice-lite-pdf-source .doc-shell .totals .stack {
+.invoice-lite-preview .doc-shell .totals .stack,
+.invoice-pdf-capture .doc-shell .totals .stack {
   width: 280px;
 }
 
-.invoice-lite-pdf-source .doc-shell .paystub-grid {
+.invoice-lite-preview .doc-shell .paystub-grid,
+.invoice-pdf-capture .doc-shell .paystub-grid {
   grid-template-columns: 1fr 1fr;
 }
 
@@ -2901,6 +2906,56 @@ input[type="number"] { -moz-appearance: textfield; }
   }
   .doc-shell .paystub-grid { grid-template-columns: 1fr; }
   .doc-shell .totals .stack { width: 100%; }
+
+  /* Preview/PDF capture — keep letter layout on small screens (matches downloaded PDF) */
+  .invoice-lite-preview .doc-shell .head-block,
+  .invoice-pdf-capture .doc-shell .head-block {
+    padding: 28px 32px;
+    grid-template-columns: 1fr auto;
+    gap: 20px;
+  }
+  .invoice-lite-preview .doc-shell .head-block .doc-title,
+  .invoice-pdf-capture .doc-shell .head-block .doc-title {
+    font-size: 36px;
+  }
+  .invoice-lite-preview .doc-shell .body-block,
+  .invoice-pdf-capture .doc-shell .body-block {
+    padding: 28px 32px 36px;
+  }
+  .invoice-lite-preview .doc-shell .parties,
+  .invoice-pdf-capture .doc-shell .parties {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .invoice-lite-preview .doc-shell .summary-grid,
+  .invoice-pdf-capture .doc-shell .summary-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .invoice-lite-preview .doc-shell .summary-grid .cell,
+  .invoice-lite-preview .doc-shell .summary-grid .cell:first-child,
+  .invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
+  .invoice-lite-preview .doc-shell .summary-grid .cell:not(:first-child),
+  .invoice-pdf-capture .doc-shell .summary-grid .cell,
+  .invoice-pdf-capture .doc-shell .summary-grid .cell:first-child,
+  .invoice-pdf-capture .doc-shell .summary-grid .cell:last-child,
+  .invoice-pdf-capture .doc-shell .summary-grid .cell:not(:first-child) {
+    border-right: 1px solid #e4e0d4;
+    border-bottom: none;
+    padding: 14px 16px 14px 0;
+  }
+  .invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
+  .invoice-pdf-capture .doc-shell .summary-grid .cell:last-child {
+    border-bottom: none;
+    padding-right: 0;
+  }
+  .invoice-lite-preview .doc-shell .totals .stack,
+  .invoice-pdf-capture .doc-shell .totals .stack {
+    width: 280px;
+  }
+  .invoice-lite-preview .doc-shell .paystub-grid,
+  .invoice-pdf-capture .doc-shell .paystub-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 
   .sidebar { padding-left: max(6px, env(safe-area-inset-left)); padding-right: max(6px, env(safe-area-inset-right)); }
   .page {
