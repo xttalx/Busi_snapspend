@@ -2297,6 +2297,15 @@ input[type="number"] { -moz-appearance: textfield; }
   padding: 28px 24px 64px;
 }
 
+.invoice-autofill-guard {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .invoice-lite-intro h1 {
   font-family: var(--serif);
   font-size: 28px;

@@ -31,11 +31,56 @@ function loadGuestDraft() {
   }
 }
 
+/** Reject drafts polluted by password managers / pasted env var names (e.g. STRIPE_WEBHOOK_SECRET). */
+function guestDraftLooksCorrupted(draft) {
+  if (!draft) return false;
+  const blob = JSON.stringify(draft);
+  if (
+    /STRIPE_|LEMONSQUEEZY_|SUPABASE_SERVICE|WHSEC_|SK_LIVE_|SK_TEST_|NEXT_PUBLIC_|WEBHOOK_SECRET/i.test(
+      blob
+    )
+  ) {
+    return true;
+  }
+  const fields = [
+    draft.business?.name,
+    draft.business?.owner,
+    draft.business?.email,
+    draft.business?.address,
+    draft.client?.name,
+    draft.client?.contact,
+    draft.client?.email,
+    draft.client?.address,
+    draft.invoice?.number,
+    draft.invoice?.notes,
+    ...(draft.invoice?.items || []).flatMap((it) => [it.desc, it.sub]),
+  ].map((v) => String(v || "").trim());
+  const envVarName = /^[A-Z][A-Z0-9_]{4,}(?:_SECRET|_KEY|_TOKEN|_URL|_ID)$/;
+  return fields.filter((t) => envVarName.test(t)).length >= 2;
+}
+
+function loadGuestDraftSafe() {
+  const saved = loadGuestDraft();
+  if (!saved || guestDraftLooksCorrupted(saved)) {
+    clearGuestDraftStorage();
+    return null;
+  }
+  return saved;
+}
+
 function saveGuestDraft(draft) {
+  if (guestDraftLooksCorrupted(draft)) return;
   try {
     sessionStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify(draft));
   } catch (_e) {}
 }
+
+const GUEST_INPUT_ATTRS = {
+  autoComplete: "off",
+  "data-1p-ignore": "true",
+  "data-lpignore": "true",
+  "data-form-type": "other",
+};
 
 function readReturnParams() {
   const q = new URLSearchParams(window.location.search);
@@ -53,11 +98,16 @@ function restoreGuestDraftForPayment(guestToken, documentId) {
     const pendingRaw = sessionStorage.getItem(GUEST_PENDING_KEY);
     if (pendingRaw) {
       const pending = JSON.parse(pendingRaw);
-      if (pending.guestToken === guestToken && pending.documentId === documentId && pending.draft) {
+      if (
+        pending.guestToken === guestToken &&
+        pending.documentId === documentId &&
+        pending.draft &&
+        !guestDraftLooksCorrupted(pending.draft)
+      ) {
         return pending.draft;
       }
     }
-    const saved = loadGuestDraft();
+    const saved = loadGuestDraftSafe();
     if (
       saved?.documentId === documentId &&
       saved?.guestToken === guestToken &&
@@ -345,7 +395,7 @@ function GuestInvoiceApp() {
       const restored = restoreGuestDraftForPayment(returning.guestToken, returning.documentId);
       if (restored) return restored;
     }
-    const saved = loadGuestDraft();
+    const saved = loadGuestDraftSafe();
     if (saved?.documentId && saved.invoice && saved.client && saved.business) {
       return { ...saved, guestToken: saved.guestToken || getGuestToken() };
     }
@@ -364,6 +414,16 @@ function GuestInvoiceApp() {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3200);
   };
+
+  React.useEffect(() => {
+    if (!guestDraftLooksCorrupted(draftRef.current)) return;
+    clearGuestDraftStorage();
+    clearCheckoutPending();
+    const fresh = defaultGuestWorkspace(guestId());
+    setDraft(fresh);
+    draftRef.current = fresh;
+    toast("Cleared invalid saved form data from this browser. Please enter your invoice details.");
+  }, []);
 
   const clearFieldError = (...keys) => {
     setFieldErrors((prev) => {
@@ -754,7 +814,16 @@ function GuestInvoiceApp() {
         </div>
 
         {mode === "edit" ? (
-          <div className="invoice-lite-form">
+          <form
+            className="invoice-lite-form"
+            autoComplete="off"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            {/* Absorb browser/password-manager autofill so real fields stay empty */}
+            <div className="invoice-autofill-guard" aria-hidden="true">
+              <input type="text" name="username" tabIndex={-1} autoComplete="username" />
+              <input type="password" name="password" tabIndex={-1} autoComplete="new-password" />
+            </div>
             <section className="invoice-lite-section">
               <h2 className="invoice-lite-section-title">Your business</h2>
               <p className="help">Shown on the invoice header.</p>
@@ -762,6 +831,8 @@ function GuestInvoiceApp() {
                 <label>Business name</label>
                 <input
                   className={inputCls("businessName")}
+                  name="marten-guest-business-name"
+                  {...GUEST_INPUT_ATTRS}
                   value={business.name}
                   onChange={(e) => updateBusiness({ name: e.target.value })}
                   placeholder="Your Studio Inc."
@@ -775,6 +846,8 @@ function GuestInvoiceApp() {
                   <label>Your name</label>
                   <input
                     className="input"
+                    name="marten-guest-business-owner"
+                    {...GUEST_INPUT_ATTRS}
                     value={business.owner || ""}
                     onChange={(e) => updateBusiness({ owner: e.target.value })}
                   />
@@ -784,6 +857,8 @@ function GuestInvoiceApp() {
                   <input
                     className={inputCls("businessEmail")}
                     type="email"
+                    name="marten-guest-business-email"
+                    {...GUEST_INPUT_ATTRS}
                     value={business.email || ""}
                     onChange={(e) => updateBusiness({ email: e.target.value })}
                   />
@@ -796,6 +871,8 @@ function GuestInvoiceApp() {
                 <label>Address</label>
                 <textarea
                   className="textarea"
+                  name="marten-guest-business-address"
+                  {...GUEST_INPUT_ATTRS}
                   value={business.address || ""}
                   onChange={(e) => updateBusiness({ address: e.target.value })}
                   rows={2}
@@ -809,6 +886,8 @@ function GuestInvoiceApp() {
                 <label>Client / company name</label>
                 <input
                   className={inputCls("clientName")}
+                  name="marten-guest-client-name"
+                  {...GUEST_INPUT_ATTRS}
                   value={client.name}
                   onChange={(e) => updateClient({ name: e.target.value })}
                   placeholder="Acme Studio Inc."
@@ -822,6 +901,8 @@ function GuestInvoiceApp() {
                   <label>Contact</label>
                   <input
                     className="input"
+                    name="marten-guest-client-contact"
+                    {...GUEST_INPUT_ATTRS}
                     value={client.contact || ""}
                     onChange={(e) => updateClient({ contact: e.target.value })}
                   />
@@ -831,6 +912,8 @@ function GuestInvoiceApp() {
                   <input
                     className={inputCls("clientEmail")}
                     type="email"
+                    name="marten-guest-client-email"
+                    {...GUEST_INPUT_ATTRS}
                     value={client.email || ""}
                     onChange={(e) => updateClient({ email: e.target.value })}
                   />
@@ -843,6 +926,8 @@ function GuestInvoiceApp() {
                 <label>Address</label>
                 <textarea
                   className="textarea"
+                  name="marten-guest-client-address"
+                  {...GUEST_INPUT_ATTRS}
                   value={client.address || ""}
                   onChange={(e) => updateClient({ address: e.target.value })}
                   rows={2}
@@ -857,9 +942,10 @@ function GuestInvoiceApp() {
                 clients={[{ id: client.id, name: client.name || "Client" }]}
                 onChange={updateInvoice}
                 fieldErrors={fieldErrors}
+                disableAutofill
               />
             </section>
-          </div>
+          </form>
         ) : null}
 
         {/* Same DOM for preview column + PDF (mounted in edit mode for post-payment download) */}

@@ -2,7 +2,7 @@
 const { useState: useState2, useMemo: useMemo2, useRef } = React;
 
 /* ---------- Invoices ---------- */
-function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
+function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAutofill = false }) {
   const update = (patch) => onChange({ ...invoice, ...patch });
   const updateItem = (i, patch) => {
     const items = invoice.items.map((it, idx) => idx === i ? { ...it, ...patch } : it);
@@ -11,6 +11,14 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
   const addItem = () => update({ items: [...invoice.items, { desc: "", sub: "", qty: 1, rate: 0 }] });
   const removeItem = (i) => update({ items: invoice.items.filter((_, idx) => idx !== i) });
   const inputCls = (key, base) => base + (fieldErrors[key] ? " field-invalid" : "");
+  const ac = disableAutofill
+    ? {
+        autoComplete: "off",
+        "data-1p-ignore": "true",
+        "data-lpignore": "true",
+        "data-form-type": "other",
+      }
+    : {};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -19,6 +27,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
           <label>Invoice no.</label>
           <input
             className={inputCls("invoiceNumber", "input mono")}
+            {...ac}
             value={invoice.number}
             onChange={(e) => update({ number: e.target.value })}
           />
@@ -46,6 +55,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
           <input
             className={inputCls("invoiceDate", "input mono")}
             type="date"
+            {...ac}
             value={invoice.date}
             onChange={(e) => update({ date: e.target.value })}
           />
@@ -56,6 +66,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
           <input
             className={inputCls("invoiceDue", "input mono")}
             type="date"
+            {...ac}
             value={invoice.due}
             onChange={(e) => update({ due: e.target.value })}
           />
@@ -75,6 +86,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
           <React.Fragment key={i}>
               <input
                 className={inputCls("lineItems", "input")}
+                {...ac}
                 value={it.desc}
                 placeholder="Line description"
                 onChange={(e) => updateItem(i, { desc: e.target.value })}
@@ -82,6 +94,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
               <input
                 className={inputCls(`lineItemQty_${i}`, "input mono")}
                 type="number"
+                {...ac}
                 value={it.qty}
                 onChange={(e) => updateItem(i, { qty: Number(e.target.value) })}
                 style={{ textAlign: "right" }}
@@ -90,6 +103,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
                 className={inputCls(`lineItemRate_${i}`, "input mono")}
                 type="number"
                 step="0.01"
+                {...ac}
                 value={it.rate}
                 onChange={(e) => updateItem(i, { rate: Number(e.target.value) })}
                 style={{ textAlign: "right" }}
@@ -107,8 +121,14 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
       <div className="row-2">
         <div className="field">
           <label>Tax rate (%)</label>
-          <input className="input mono" type="number" step="0.01" value={(invoice.taxRate || 0) * 100}
-          onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })} />
+          <input
+            className="input mono"
+            type="number"
+            step="0.01"
+            {...ac}
+            value={(invoice.taxRate || 0) * 100}
+            onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
+          />
         </div>
         <div className="field">
           <label>Currency</label>
@@ -117,7 +137,13 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {} }) {
       </div>
       <div className="field">
         <label>Notes / terms</label>
-        <textarea className="textarea" value={invoice.notes} onChange={(e) => update({ notes: e.target.value })} placeholder="Payment terms, thank-you note…" />
+        <textarea
+          className="textarea"
+          {...ac}
+          value={invoice.notes}
+          onChange={(e) => update({ notes: e.target.value })}
+          placeholder="Payment terms, thank-you note…"
+        />
       </div>
     </div>);
 
