@@ -20,87 +20,108 @@ function pdfCaptureTarget(element) {
   return element.querySelector?.(".doc-shell") || element;
 }
 
-const PDF_LAYOUT_WIDTH_PX = 816; /* 8.5in at 96dpi — matches letter desktop layout */
+const PDF_LETTER_WIDTH_PX = 816; /* 8.5in @ 96dpi — matches .doc-pdf-letter */
+const PDF_MARGIN_IN = 0.35;
 
-function fixPdfCloneVisibility(clonedDoc) {
-  const captureRoots = clonedDoc.querySelectorAll(
-    ".invoice-lite-preview, .invoice-pdf-capture, .invoice-lite-pdf-source"
-  );
-  captureRoots.forEach((node) => {
-    node.style.cssText =
+function fixPdfClone(clonedDoc, clonedShell, widthPx) {
+  const w = `${widthPx}px`;
+  clonedShell.style.width = w;
+  clonedShell.style.minWidth = w;
+  clonedShell.style.maxWidth = w;
+  clonedShell.style.boxSizing = "border-box";
+  clonedShell.style.visibility = "visible";
+  clonedShell.style.opacity = "1";
+  clonedShell.style.overflow = "visible";
+
+  clonedDoc.querySelectorAll(".doc-pdf-letter, .invoice-lite-preview").forEach((root) => {
+    root.style.cssText =
       "position:static;left:auto;top:auto;visibility:visible;opacity:1;overflow:visible;z-index:auto;pointer-events:none;";
-    node.removeAttribute("aria-hidden");
   });
-  clonedDoc.querySelectorAll(
-    ".invoice-lite-preview .doc-shell, .invoice-pdf-capture .doc-shell, .invoice-lite-pdf-source .doc-shell"
-  ).forEach((shell) => {
-    shell.style.width = "8.5in";
-    shell.style.maxWidth = "8.5in";
-    shell.style.boxSizing = "border-box";
-  });
+
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  const accentInk = getComputedStyle(document.documentElement).getPropertyValue("--accent-ink").trim();
+  if (accent) {
+    clonedShell.querySelectorAll(".head-block").forEach((el) => {
+      el.style.background = accent;
+      if (accentInk) el.style.color = accentInk;
+    });
+  }
 }
 
-async function downloadPreviewPdfFromElement(element, fileName) {
-  const target = pdfCaptureTarget(element);
-  if (!target) {
-    throw new Error("Preview document not found.");
-  }
-  if (window.html2pdf) {
-    const opts = {
-      margin: [0.35, 0.35, 0.35, 0.35],
-      filename: fileName,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: {
-        scale: 1.5,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        windowWidth: PDF_LAYOUT_WIDTH_PX,
-        width: PDF_LAYOUT_WIDTH_PX,
-        onclone: (clonedDoc) => fixPdfCloneVisibility(clonedDoc),
-      },
-      jsPDF: {
-        unit: "in",
-        format: "letter",
-        orientation: "portrait",
-      },
-      pagebreak: { mode: ["css", "legacy"] },
-    };
-    await new Promise((resolve, reject) => {
-      window
-        .html2pdf()
-        .set(opts)
-        .from(target)
-        .save()
-        .then(resolve)
-        .catch(reject);
-    });
-    return;
-  }
-
-  if (!window.jspdf?.jsPDF || !window.html2canvas) {
+async function rasterizeDocShell(shell) {
+  if (!window.html2canvas) {
     throw new Error("PDF libraries missing. Refresh once and try again.");
   }
 
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: "portrait", unit: "in", format: [8.5, 11], compress: true });
-  const margin = 0.35;
-  const contentWidth = 8.5 - margin * 2;
-  const windowWidth = PDF_LAYOUT_WIDTH_PX;
-  await doc.html(target, {
-    x: margin,
-    y: margin,
-    width: contentWidth,
-    windowWidth,
-    autoPaging: "text",
-    html2canvas: {
-      scale: 1.5,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: PDF_LAYOUT_WIDTH_PX,
-      width: PDF_LAYOUT_WIDTH_PX,
-    },
+  const rect = shell.getBoundingClientRect();
+  const width = Math.max(Math.ceil(rect.width), shell.scrollWidth, PDF_LETTER_WIDTH_PX);
+  const height = Math.max(Math.ceil(shell.scrollHeight), shell.offsetHeight);
+
+  return window.html2canvas(shell, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: "#ffffff",
+    width,
+    height,
+    windowWidth: width,
+    windowHeight: height,
+    scrollX: 0,
+    scrollY: 0,
+    logging: false,
+    onclone: (clonedDoc, clonedShell) => fixPdfClone(clonedDoc, clonedShell, width),
   });
-  doc.save(fileName);
+}
+
+function canvasToLetterPdf(canvas, fileName) {
+  if (!window.jspdf?.jsPDF) {
+    throw new Error("PDF libraries missing. Refresh once and try again.");
+  }
+  const { jsPDF } = window.jspdf;
+  const pageW = 8.5;
+  const pageH = 11;
+  const contentW = pageW - PDF_MARGIN_IN * 2;
+  const contentH = pageH - PDF_MARGIN_IN * 2;
+  const imgW = contentW;
+  const imgH = (canvas.height * contentW) / canvas.width;
+  const img = canvas.toDataURL("image/jpeg", 0.92);
+
+  const pdf = new jsPDF({ unit: "in", format: "letter", orientation: "portrait", compress: true });
+  let offset = 0;
+  let page = 0;
+
+  while (offset < imgH) {
+    if (page > 0) pdf.addPage();
+    pdf.addImage(img, "JPEG", PDF_MARGIN_IN, PDF_MARGIN_IN - offset, imgW, imgH);
+    offset += contentH;
+    page += 1;
+  }
+
+  pdf.save(fileName);
+}
+
+/** Capture the on-screen preview node exactly as rendered (WYSIWYG). */
+async function downloadPreviewPdfFromElement(element, fileName) {
+  const shell = pdfCaptureTarget(element);
+  if (!shell) {
+    throw new Error("Preview document not found.");
+  }
+
+  const scrollTarget =
+    element.closest?.(".invoice-lite-preview-slot, .invoice-lite-preview, .doc-pdf-letter, .doc-preview-col") ||
+    shell;
+  scrollTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+
+  shell.classList.add("pdf-capture-snapshot");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await new Promise((r) => setTimeout(r, 100));
+
+  try {
+    const canvas = await rasterizeDocShell(shell);
+    canvasToLetterPdf(canvas, fileName);
+  } finally {
+    shell.classList.remove("pdf-capture-snapshot");
+  }
 }
 
 async function downloadInvoicePdf({ invoice, element }) {

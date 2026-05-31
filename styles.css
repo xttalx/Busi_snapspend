@@ -2333,7 +2333,28 @@ input[type="number"] { -moz-appearance: textfield; }
   max-width: 100%;
 }
 
-/* Letter layout — preview and PDF use the same element + rules (WYSIWYG) */
+/* Off-screen but painted — same DOM as visible preview (post-payment / edit-mode download) */
+.invoice-lite-preview-slot--capture-only,
+.doc-pdf-letter--capture-only {
+  position: fixed;
+  left: 0;
+  top: 0;
+  opacity: 0.01;
+  pointer-events: none;
+  z-index: -1;
+  overflow: visible;
+}
+
+.invoice-lite-preview-slot--capture-only .invoice-lite-preview {
+  overflow: visible;
+}
+
+.pdf-capture-snapshot {
+  box-shadow: none !important;
+}
+
+/* Letter layout — preview column and PDF use the same element + rules (WYSIWYG) */
+.doc-pdf-letter .doc-shell,
 .invoice-lite-preview .doc-shell,
 .invoice-pdf-capture .doc-shell {
   width: 8.5in;
@@ -2341,6 +2362,7 @@ input[type="number"] { -moz-appearance: textfield; }
   box-sizing: border-box;
 }
 
+.doc-pdf-letter .doc-shell .head-block,
 .invoice-lite-preview .doc-shell .head-block,
 .invoice-pdf-capture .doc-shell .head-block {
   padding: 28px 32px;
@@ -2348,27 +2370,35 @@ input[type="number"] { -moz-appearance: textfield; }
   gap: 20px;
 }
 
+.doc-pdf-letter .doc-shell .head-block .doc-title,
 .invoice-lite-preview .doc-shell .head-block .doc-title,
 .invoice-pdf-capture .doc-shell .head-block .doc-title {
   font-size: 36px;
 }
 
+.doc-pdf-letter .doc-shell .body-block,
 .invoice-lite-preview .doc-shell .body-block,
 .invoice-pdf-capture .doc-shell .body-block {
   padding: 28px 32px 36px;
 }
 
+.doc-pdf-letter .doc-shell .parties,
 .invoice-lite-preview .doc-shell .parties,
 .invoice-pdf-capture .doc-shell .parties {
   grid-template-columns: 1fr 1fr;
   gap: 24px;
 }
 
+.doc-pdf-letter .doc-shell .summary-grid,
 .invoice-lite-preview .doc-shell .summary-grid,
 .invoice-pdf-capture .doc-shell .summary-grid {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.doc-pdf-letter .doc-shell .summary-grid .cell,
+.doc-pdf-letter .doc-shell .summary-grid .cell:first-child,
+.doc-pdf-letter .doc-shell .summary-grid .cell:last-child,
+.doc-pdf-letter .doc-shell .summary-grid .cell:not(:first-child),
 .invoice-lite-preview .doc-shell .summary-grid .cell,
 .invoice-lite-preview .doc-shell .summary-grid .cell:first-child,
 .invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
@@ -2382,17 +2412,20 @@ input[type="number"] { -moz-appearance: textfield; }
   padding: 14px 16px 14px 0;
 }
 
+.doc-pdf-letter .doc-shell .summary-grid .cell:last-child,
 .invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
 .invoice-pdf-capture .doc-shell .summary-grid .cell:last-child {
   border-right: none;
   padding-right: 0;
 }
 
+.doc-pdf-letter .doc-shell .totals .stack,
 .invoice-lite-preview .doc-shell .totals .stack,
 .invoice-pdf-capture .doc-shell .totals .stack {
   width: 280px;
 }
 
+.doc-pdf-letter .doc-shell .paystub-grid,
 .invoice-lite-preview .doc-shell .paystub-grid,
 .invoice-pdf-capture .doc-shell .paystub-grid {
   grid-template-columns: 1fr 1fr;
@@ -2908,29 +2941,38 @@ input[type="number"] { -moz-appearance: textfield; }
   .doc-shell .totals .stack { width: 100%; }
 
   /* Preview/PDF capture — keep letter layout on small screens (matches downloaded PDF) */
+  .doc-pdf-letter .doc-shell .head-block,
   .invoice-lite-preview .doc-shell .head-block,
   .invoice-pdf-capture .doc-shell .head-block {
     padding: 28px 32px;
     grid-template-columns: 1fr auto;
     gap: 20px;
   }
+  .doc-pdf-letter .doc-shell .head-block .doc-title,
   .invoice-lite-preview .doc-shell .head-block .doc-title,
   .invoice-pdf-capture .doc-shell .head-block .doc-title {
     font-size: 36px;
   }
+  .doc-pdf-letter .doc-shell .body-block,
   .invoice-lite-preview .doc-shell .body-block,
   .invoice-pdf-capture .doc-shell .body-block {
     padding: 28px 32px 36px;
   }
+  .doc-pdf-letter .doc-shell .parties,
   .invoice-lite-preview .doc-shell .parties,
   .invoice-pdf-capture .doc-shell .parties {
     grid-template-columns: 1fr 1fr;
     gap: 24px;
   }
+  .doc-pdf-letter .doc-shell .summary-grid,
   .invoice-lite-preview .doc-shell .summary-grid,
   .invoice-pdf-capture .doc-shell .summary-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+  .doc-pdf-letter .doc-shell .summary-grid .cell,
+  .doc-pdf-letter .doc-shell .summary-grid .cell:first-child,
+  .doc-pdf-letter .doc-shell .summary-grid .cell:last-child,
+  .doc-pdf-letter .doc-shell .summary-grid .cell:not(:first-child),
   .invoice-lite-preview .doc-shell .summary-grid .cell,
   .invoice-lite-preview .doc-shell .summary-grid .cell:first-child,
   .invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
@@ -2943,15 +2985,18 @@ input[type="number"] { -moz-appearance: textfield; }
     border-bottom: none;
     padding: 14px 16px 14px 0;
   }
+  .doc-pdf-letter .doc-shell .summary-grid .cell:last-child,
   .invoice-lite-preview .doc-shell .summary-grid .cell:last-child,
   .invoice-pdf-capture .doc-shell .summary-grid .cell:last-child {
     border-bottom: none;
     padding-right: 0;
   }
+  .doc-pdf-letter .doc-shell .totals .stack,
   .invoice-lite-preview .doc-shell .totals .stack,
   .invoice-pdf-capture .doc-shell .totals .stack {
     width: 280px;
   }
+  .doc-pdf-letter .doc-shell .paystub-grid,
   .invoice-lite-preview .doc-shell .paystub-grid,
   .invoice-pdf-capture .doc-shell .paystub-grid {
     grid-template-columns: 1fr 1fr;

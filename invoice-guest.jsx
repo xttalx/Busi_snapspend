@@ -860,21 +860,31 @@ function GuestInvoiceApp() {
               />
             </section>
           </div>
-        ) : (
-          <div className="invoice-lite-preview">
+        ) : null}
+
+        {/* Same DOM for preview column + PDF (mounted in edit mode for post-payment download) */}
+        <div
+          className={
+            "invoice-lite-preview-slot " + (mode !== "preview" ? "invoice-lite-preview-slot--capture-only" : "")
+          }
+        >
+          <div className="invoice-lite-preview doc-pdf-letter">
             <div ref={invoicePreviewRef}>
               <InvoiceDocument invoice={invoice} client={client} business={business} />
             </div>
-            <div className="invoice-lite-preview-actions">
-              <button type="button" className="btn" onClick={() => setMode("edit")}>
-                <Icon name="edit" size={13} /> Edit form
-              </button>
-              <button type="button" className="btn primary" onClick={handleDownload}>
-                <Icon name="download" size={13} /> Pay &amp; download · {dlPrice}
-              </button>
-            </div>
           </div>
-        )}
+        </div>
+
+        {mode === "preview" ? (
+          <div className="invoice-lite-preview-actions">
+            <button type="button" className="btn" onClick={() => setMode("edit")}>
+              <Icon name="edit" size={13} /> Edit form
+            </button>
+            <button type="button" className="btn primary" onClick={handleDownload}>
+              <Icon name="download" size={13} /> Pay &amp; download · {dlPrice}
+            </button>
+          </div>
+        ) : null}
       </main>
 
       <GuestDownloadModal

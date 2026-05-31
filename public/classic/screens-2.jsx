@@ -352,19 +352,23 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
               </button>
             </div>
 
-            {mode === "edit" ?
-            <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)" }}>
+            <div
+              ref={invoicePreviewRef}
+              className={
+                "doc-pdf-letter " + (mode === "edit" ? "doc-pdf-letter--capture-only" : "")
+              }
+            >
+              <InvoiceDocument invoice={inv} client={client} business={business} />
+            </div>
+
+            {mode === "edit" ? (
+            <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)", marginTop: 16 }}>
                 <InvoiceEditor
                 invoice={inv}
                 clients={state.clients}
                 onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, patched) })} />
-              
-              </div> :
-
-            <div ref={invoicePreviewRef} className="invoice-pdf-capture">
-              <InvoiceDocument invoice={inv} client={client} business={business} />
-            </div>
-            }
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1008,7 +1012,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
             </button>
           </div>
           {generated || employeeStubs.length > 0 ?
-          <div ref={paystubPreviewRef}>
+          <div ref={paystubPreviewRef} className="doc-pdf-letter">
               <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} />
             </div> :
 

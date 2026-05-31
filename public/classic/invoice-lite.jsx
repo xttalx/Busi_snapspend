@@ -278,21 +278,30 @@ function InvoiceLiteScreen({ state, dispatch, business, toast, billingStatus, re
               />
             </section>
           </div>
-        ) : (
-          <div className="invoice-lite-preview">
+        ) : null}
+
+        <div
+          className={
+            "invoice-lite-preview-slot " + (mode !== "preview" ? "invoice-lite-preview-slot--capture-only" : "")
+          }
+        >
+          <div className="invoice-lite-preview doc-pdf-letter">
             <div ref={invoicePreviewRef}>
               <InvoiceDocument invoice={inv} client={client} business={business} />
             </div>
-            <div className="invoice-lite-preview-actions">
-              <button type="button" className="btn" onClick={() => setMode("edit")}>
-                <Icon name="edit" size={13} /> Edit form
-              </button>
-              <button type="button" className="btn primary" onClick={handleDownload}>
-                <Icon name="download" size={13} /> Download PDF · {dlPrice}
-              </button>
-            </div>
           </div>
-        )}
+        </div>
+
+        {mode === "preview" ? (
+          <div className="invoice-lite-preview-actions">
+            <button type="button" className="btn" onClick={() => setMode("edit")}>
+              <Icon name="edit" size={13} /> Edit form
+            </button>
+            <button type="button" className="btn primary" onClick={handleDownload}>
+              <Icon name="download" size={13} /> Download PDF · {dlPrice}
+            </button>
+          </div>
+        ) : null}
       </main>
 
       <PaywallModal
