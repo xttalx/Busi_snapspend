@@ -364,6 +364,7 @@ function App() {
   const supabaseEnabled = window.MartenAPI && window.MartenAPI.isEnabled();
   const [session, setSession] = useStateApp(null);
   const [authLoading, setAuthLoading] = useStateApp(supabaseEnabled);
+  const [passwordRecovery, setPasswordRecovery] = useStateApp(false);
   const [dataLoading, setDataLoading] = useStateApp(false);
   const stateRef = React.useRef(state);
   stateRef.current = state;
@@ -399,14 +400,30 @@ function App() {
   useEffectApp(() => {
     if (!supabaseEnabled) return;
     let active = true;
-    window.MartenAPI.getSession().then(({ session: s }) => {
-      if (active) {
-        setSession(s);
-        setAuthLoading(false);
+
+    (async () => {
+      try {
+        const { recovery } = await window.MartenAPI.completeAuthFromUrl();
+        if (active && recovery) setPasswordRecovery(true);
+      } catch (err) {
+        console.error("Auth URL handling failed:", err);
       }
-    });
-    const { data: { subscription } } = window.MartenAPI.onAuthStateChange((s) => {
-      if (active) setSession(s);
+      try {
+        const { session: s } = await window.MartenAPI.getSession();
+        if (active) {
+          setSession(s);
+          setAuthLoading(false);
+        }
+      } catch (err) {
+        console.error("Session load failed:", err);
+        if (active) setAuthLoading(false);
+      }
+    })();
+
+    const { data: { subscription } } = window.MartenAPI.onAuthStateChange((event, s) => {
+      if (!active) return;
+      setSession(s);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
     });
     return () => {
       active = false;
@@ -741,6 +758,17 @@ function App() {
     return <LandingPage setupRequired />;
   }
   if (authLoading) return <AppLoading label="Checking session…" />;
+  if (session && passwordRecovery) {
+    return (
+      <AuthScreen
+        recovery
+        onRecoveryComplete={() => {
+          setPasswordRecovery(false);
+          toast("Password updated. You are signed in.");
+        }}
+      />
+    );
+  }
   if (!session) return <LandingPage />;
   if (dataLoading || billingLoading) return <AppLoading label="Loading your workspace…" />;
 

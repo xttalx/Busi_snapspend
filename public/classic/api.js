@@ -228,7 +228,7 @@
 
   function onAuthStateChange(callback) {
     if (!isEnabled()) return { data: { subscription: { unsubscribe: () => {} } } };
-    return sb().auth.onAuthStateChange((_event, session) => callback(session));
+    return sb().auth.onAuthStateChange((event, session) => callback(event, session));
   }
 
   async function signIn(email, password) {
@@ -248,6 +248,63 @@
     if (error) throw error;
   }
 
+  function authRedirectBase() {
+    const path = (window.location.pathname || "/").replace(/\/$/, "") || "/";
+    return `${window.location.origin}${path}`;
+  }
+
+  /** Send password reset email (Supabase). */
+  async function resetPasswordForEmail(email) {
+    const redirectTo = `${authRedirectBase()}?auth=recovery`;
+    const { error } = await sb().auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    if (error) throw error;
+  }
+
+  /** Set new password after user opens the email link. */
+  async function updatePassword(newPassword) {
+    const { error } = await sb().auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  }
+
+  /** Exchange PKCE code or hash tokens from email links; returns whether user must set a new password. */
+  async function completeAuthFromUrl() {
+    if (!isEnabled()) return { recovery: false };
+
+    const client = sb();
+    const search = new URLSearchParams(window.location.search);
+    const authParam = search.get("auth");
+    let recovery = authParam === "recovery";
+
+    const code = search.get("code");
+    if (code) {
+      const { error } = await client.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      recovery = true;
+    } else {
+      const hash = (window.location.hash || "").replace(/^#/, "");
+      if (hash) {
+        const hashParams = new URLSearchParams(hash);
+        if (hashParams.get("type") === "recovery" || hashParams.get("access_token")) {
+          const { error } = await client.auth.getSession();
+          if (error) throw error;
+          if (hashParams.get("type") === "recovery") recovery = true;
+        }
+      }
+    }
+
+    if (search.has("code") || search.has("auth")) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("code");
+      url.searchParams.delete("auth");
+      window.history.replaceState({}, "", url.pathname + (url.search || "") + url.hash);
+    }
+    if (window.location.hash && recovery) {
+      window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    }
+
+    return { recovery };
+  }
+
   window.MartenAPI = {
     isEnabled,
     getSession,
@@ -255,6 +312,9 @@
     signIn,
     signUp,
     signOut,
+    resetPasswordForEmail,
+    updatePassword,
+    completeAuthFromUrl,
     fetchAllData,
     saveExpense,
     saveBill,
