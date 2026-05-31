@@ -48,7 +48,7 @@ function fixPdfClone(clonedDoc, clonedShell, widthPx) {
   }
 }
 
-async function rasterizeDocShell(shell) {
+async function rasterizeDocShell(shell, { fast = false } = {}) {
   if (!window.html2canvas) {
     throw new Error("PDF libraries missing. Refresh once and try again.");
   }
@@ -58,7 +58,7 @@ async function rasterizeDocShell(shell) {
   const height = Math.max(Math.ceil(shell.scrollHeight), shell.offsetHeight);
 
   return window.html2canvas(shell, {
-    scale: 2,
+    scale: fast ? 1.25 : 2,
     useCORS: true,
     allowTaint: true,
     backgroundColor: "#ffffff",
@@ -73,7 +73,7 @@ async function rasterizeDocShell(shell) {
   });
 }
 
-function canvasToLetterPdf(canvas, fileName) {
+function canvasToLetterPdf(canvas, fileName, { fast = false } = {}) {
   if (!window.jspdf?.jsPDF) {
     throw new Error("PDF libraries missing. Refresh once and try again.");
   }
@@ -84,7 +84,7 @@ function canvasToLetterPdf(canvas, fileName) {
   const contentH = pageH - PDF_MARGIN_IN * 2;
   const imgW = contentW;
   const imgH = (canvas.height * contentW) / canvas.width;
-  const img = canvas.toDataURL("image/jpeg", 0.92);
+  const img = canvas.toDataURL("image/jpeg", fast ? 0.85 : 0.92);
 
   const pdf = new jsPDF({ unit: "in", format: "letter", orientation: "portrait", compress: true });
   let offset = 0;
@@ -101,7 +101,7 @@ function canvasToLetterPdf(canvas, fileName) {
 }
 
 /** Capture the on-screen preview node exactly as rendered (WYSIWYG). */
-async function downloadPreviewPdfFromElement(element, fileName) {
+async function downloadPreviewPdfFromElement(element, fileName, { fast = false } = {}) {
   const shell = pdfCaptureTarget(element);
   if (!shell) {
     throw new Error("Preview document not found.");
@@ -114,18 +114,18 @@ async function downloadPreviewPdfFromElement(element, fileName) {
 
   shell.classList.add("pdf-capture-snapshot");
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  await new Promise((r) => setTimeout(r, 100));
+  if (!fast) await new Promise((r) => setTimeout(r, 50));
 
   try {
-    const canvas = await rasterizeDocShell(shell);
-    canvasToLetterPdf(canvas, fileName);
+    const canvas = await rasterizeDocShell(shell, { fast });
+    canvasToLetterPdf(canvas, fileName, { fast });
   } finally {
     shell.classList.remove("pdf-capture-snapshot");
   }
 }
 
-async function downloadInvoicePdf({ invoice, element }) {
-  await downloadPreviewPdfFromElement(element, `${invoice.number || "invoice"}.pdf`);
+async function downloadInvoicePdf({ invoice, element, fast = false }) {
+  await downloadPreviewPdfFromElement(element, `${invoice.number || "invoice"}.pdf`, { fast });
 }
 
 async function downloadPaystubPdf({ stub, element }) {

@@ -164,7 +164,7 @@ const DOWNLOAD_PHASE_HINTS = {
   checking: "Verifying your download…",
   preparing: "Loading your invoice…",
   rendering: "Rendering invoice layout…",
-  generating: "Generating PDF — usually 10–25 seconds…",
+  generating: "Generating PDF — usually 5–15 seconds…",
   saving: "Finalizing…",
   ready: "Your PDF is ready. Tap the button below to save it.",
   done: "Saved to your device. You can create another invoice.",
@@ -248,23 +248,8 @@ function GuestDownloadModal({ open, phase, message, error, fileName, busy, onDow
   );
 }
 
-/** Wait until the off-screen invoice preview is mounted (needed after Stripe redirect). */
-function waitForPreviewElement(ref, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const tick = () => {
-      if (ref.current) return resolve(ref.current);
-      if (Date.now() - start > timeoutMs) {
-        return reject(new Error("Invoice preview not ready. Click Download PDF to try again."));
-      }
-      requestAnimationFrame(tick);
-    };
-    tick();
-  });
-}
-
-/** Wait until React has painted invoice content into the PDF capture node. */
-function waitForPreviewContent(ref, businessName, timeoutMs = 10000) {
+/** Wait until the preview column is mounted and painted (single pass). */
+function waitForPreviewReady(ref, businessName, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
     const needle = (businessName || "").trim();
     const start = Date.now();
@@ -489,7 +474,22 @@ function GuestInvoiceApp() {
     else closeDownloadModal();
   };
 
-  const runDownload = async (draftSnapshot, { skipPaymentCheck, skipValidation } = {}) => {
+  const prewarmInvoicePreview = (draftSnapshot) => {
+    setDraft(draftSnapshot);
+    draftRef.current = draftSnapshot;
+    setMode("preview");
+  };
+
+  const paintInvoicePreview = async (draftSnapshot) => {
+    prewarmInvoicePreview(draftSnapshot);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return waitForPreviewReady(invoicePreviewRef, draftSnapshot.business?.name);
+  };
+
+  const runDownload = async (
+    draftSnapshot,
+    { skipPaymentCheck, skipValidation, skipStatusCheck, previewReady } = {}
+  ) => {
     const source = draftSnapshot || draftRef.current;
     const { invoice, client, business } = source;
 
@@ -501,9 +501,9 @@ function GuestInvoiceApp() {
       }
     }
 
-    if (downloadModal.open) setDownloadPhase("checking");
+    if (downloadModal.open && !skipStatusCheck) setDownloadPhase("checking");
 
-    if (window.MartenBilling?.guestDownloadStatus) {
+    if (!skipStatusCheck && window.MartenBilling?.guestDownloadStatus) {
       const status = await window.MartenBilling.guestDownloadStatus(
         source.guestToken,
         source.documentId
@@ -527,22 +527,23 @@ function GuestInvoiceApp() {
     setDownloadBusy(true);
     setDownloadPhase("preparing", { fileName: pdfFileName(source) });
     try {
-      setDraft(source);
-      draftRef.current = source;
-      setMode("preview");
-      setDownloadPhase("rendering");
-      await new Promise((r) => setTimeout(r, 80));
-      await waitForPreviewElement(invoicePreviewRef, 15000);
-      await waitForPreviewContent(invoicePreviewRef, business.name, 15000);
+      if (!previewReady) {
+        setDownloadPhase("rendering");
+        await paintInvoicePreview(source);
+      }
       setDownloadPhase("generating");
-      await window.downloadInvoicePdf({ invoice, element: invoicePreviewRef.current });
+      await window.downloadInvoicePdf({
+        invoice,
+        element: invoicePreviewRef.current,
+        fast: true,
+      });
 
       setDownloadPhase("saving");
       if (window.MartenBilling?.completeGuestDownload) {
-        await window.MartenBilling.completeGuestDownload(
+        window.MartenBilling.completeGuestDownload(
           source.guestToken,
           source.documentId
-        );
+        ).catch((err) => console.warn("completeGuestDownload:", err));
       }
 
       setDownloadPhase("done", { message: DOWNLOAD_PHASE_HINTS.done });
@@ -563,10 +564,11 @@ function GuestInvoiceApp() {
   const waitForPayment = async (guestToken, documentId, stripeSessionId) => {
     if (!window.MartenBilling?.guestDownloadStatus) return { allowed: true };
 
-    const attempts = stripeSessionId ? 12 : 20;
-    const delayMs = stripeSessionId ? 600 : 2000;
+    const maxAttempts = stripeSessionId ? 8 : 10;
+    const delayMs = stripeSessionId ? 350 : 1200;
 
-    for (let i = 0; i < attempts; i++) {
+    for (let i = 0; i < maxAttempts; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, delayMs));
       try {
         const status = await window.MartenBilling.guestDownloadStatus(
           guestToken,
@@ -584,7 +586,6 @@ function GuestInvoiceApp() {
       } catch (err) {
         console.warn("Payment status check failed:", err);
       }
-      await new Promise((r) => setTimeout(r, i === 0 ? 200 : delayMs));
     }
     return { allowed: false };
   };
@@ -604,13 +605,12 @@ function GuestInvoiceApp() {
     });
     if (!autoStart) return false;
 
-    await new Promise((r) => setTimeout(r, 100));
-    if (runId !== downloadRunId.current) return false;
-
     if (runId !== downloadRunId.current) return false;
     return runDownload(draftSnapshot, {
       skipPaymentCheck: true,
       skipValidation: true,
+      skipStatusCheck: true,
+      previewReady: true,
     });
   };
 
@@ -665,6 +665,7 @@ function GuestInvoiceApp() {
 
       let checkoutDraft = { ...draft, documentId, guestToken };
       persistCheckoutDraft(checkoutDraft);
+      await paintInvoicePreview(checkoutDraft);
 
       const email = draft.business.email?.trim() || draft.client.email?.trim() || "";
       const { checkoutUrl, guestToken: token } = await window.MartenBilling.guestCheckout(
@@ -708,10 +709,16 @@ function GuestInvoiceApp() {
     setDraft(restored);
     draftRef.current = restored;
     saveGuestDraft(restored);
+    prewarmInvoicePreview(restored);
 
     (async () => {
       try {
-        const payment = await waitForPayment(guestToken, documentId, stripeSessionId);
+        const paymentPromise = waitForPayment(guestToken, documentId, stripeSessionId);
+        const previewPromise = waitForPreviewReady(
+          invoicePreviewRef,
+          restored.business?.name
+        );
+        const [payment] = await Promise.all([paymentPromise, previewPromise]);
         window.history.replaceState({}, "", "/invoice");
 
         let draftToUse = restored;
@@ -726,13 +733,24 @@ function GuestInvoiceApp() {
               draftToUse = fromStripe;
               setDraft(fromStripe);
               draftRef.current = fromStripe;
+              await paintInvoicePreview(fromStripe);
             }
           }
-          setDownloadPhase("preparing", {
+          setDownloadPhase("generating", {
             message: "Payment confirmed. Building your PDF…",
             fileName: pdfFileName(draftToUse),
           });
-          await triggerPaidDownload(draftToUse, { autoStart: true });
+          const runId = ++downloadRunId.current;
+          setPaidReady(true);
+          const ok = await runDownload(draftToUse, {
+            skipPaymentCheck: true,
+            skipValidation: true,
+            skipStatusCheck: true,
+            previewReady: true,
+          });
+          if (!ok && runId === downloadRunId.current) {
+            setDownloadPhase("ready", { message: DOWNLOAD_PHASE_HINTS.ready });
+          }
           return;
         }
 
@@ -999,7 +1017,7 @@ function GuestInvoiceApp() {
         documentType="invoice"
         documentId={draft.documentId}
         busy={paywallBusy}
-        onProceed={() => {
+        onProceed={async () => {
           const v = validateBeforeCheckout();
           if (!v.ok) {
             showValidationIssues(v);
@@ -1007,6 +1025,7 @@ function GuestInvoiceApp() {
             return;
           }
           persistCheckoutDraft(draftRef.current);
+          await paintInvoicePreview(draftRef.current);
           if (!paywall.checkoutUrl) return;
           setPaywallBusy(true);
           window.location.href = paywall.checkoutUrl;
