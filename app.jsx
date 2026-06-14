@@ -448,6 +448,11 @@ function App() {
 
   useEffectApp(() => {
     if (!userId || !window.MartenBilling) return;
+    if (!window.MartenBilling.isEnabled?.()) {
+      setBillingStatus({ billingDisabled: true, configured: false, paymentMethodOnFile: true });
+      setBillingLoading(false);
+      return;
+    }
     let active = true;
     setBillingLoading(true);
     refreshBilling().finally(() => {
@@ -770,21 +775,8 @@ function App() {
     );
   }
   if (!session) return <LandingPage />;
-  if (dataLoading || billingLoading) return <AppLoading label="Loading your workspace…" />;
-
-  if (
-    window.MartenBilling &&
-    billingStatus &&
-    window.MartenBilling.needsPaymentSetup(billingStatus)
-  ) {
-    return (
-      <BillingOnboarding
-        email={session.user?.email}
-        toast={toast}
-        onComplete={() => refreshBilling()}
-        proOnly
-      />
-    );
+  if (dataLoading || (billingLoading && window.MartenBilling?.isEnabled?.())) {
+    return <AppLoading label="Loading your workspace…" />;
   }
 
   let screen = null;

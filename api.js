@@ -23,6 +23,16 @@
     return window.MartenSupabase.isConfigured() && !!sb();
   }
 
+  function rethrowAuth(err) {
+    const msg = err?.message || String(err);
+    if (/failed to fetch|networkerror|load failed|could not resolve/i.test(msg)) {
+      throw new Error(
+        "Cannot reach Supabase. Update supabase-config.js (or NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY) with a valid project — the current URL may be deleted or wrong."
+      );
+    }
+    throw err;
+  }
+
   function rowToEntity(row) {
     return row.data;
   }
@@ -232,15 +242,23 @@
   }
 
   async function signIn(email, password) {
-    const { data, error } = await sb().auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await sb().auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      rethrowAuth(err);
+    }
   }
 
   async function signUp(email, password) {
-    const { data, error } = await sb().auth.signUp({ email, password });
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await sb().auth.signUp({ email, password });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      rethrowAuth(err);
+    }
   }
 
   async function signOut() {

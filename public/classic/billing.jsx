@@ -1,5 +1,8 @@
 /* Billing — Lemon Squeezy paywall, pricing, subscription management */
 (function () {
+  /** Synced from BILLING_ENABLED at build time (see billing-config.js). */
+  const BILLING_ENABLED = window.BILLING_CONFIG?.enabled === true;
+
   /** Keep in sync with lib/billing/config.ts */
   const PRICING = {
     currency: "CAD",
@@ -39,10 +42,28 @@
     return json;
   }
 
+  const FREE_STATUS = {
+    configured: false,
+    billingDisabled: true,
+    plan: "none",
+    paymentMethodOnFile: true,
+    proActive: false,
+    subscriptionStatus: null,
+    renewsAt: null,
+    endsAt: null,
+    lsCustomerId: null,
+    pricing: PRICING,
+  };
+
   const MartenBilling = {
     PRICING,
 
+    isEnabled() {
+      return BILLING_ENABLED;
+    },
+
     async getStatus() {
+      if (!BILLING_ENABLED) return { ...FREE_STATUS };
       return billingFetch("/api/billing/status");
     },
 
@@ -61,22 +82,11 @@
 
     /** Returns { allowed, checkoutUrl?, needsCardSetup?, message? } */
     async authorizeDownload(documentType, documentId) {
+      if (!BILLING_ENABLED) return { allowed: true, reason: "billing_disabled" };
       return billingFetch("/api/billing/download", {
         method: "POST",
         body: JSON.stringify({ documentType, documentId }),
       });
-    },
-
-    /** Guest invoice generator — no sign-in */
-    async guestCheckout(documentId, guestToken, email) {
-      const res = await fetch("/api/billing/guest-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId, guestToken, email }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Could not start checkout.");
-      return json;
     },
 
     async guestDownloadStatus(guestToken, documentId, stripeSessionId) {
@@ -85,6 +95,18 @@
       const res = await fetch(`/api/billing/guest-status?${qs}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not verify payment.");
+      return json;
+    },
+
+    /** Guest invoice generator — no sign-in. Server returns an error if checkout is not configured. */
+    async guestCheckout(documentId, guestToken, email) {
+      const res = await fetch("/api/billing/guest-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId, guestToken, email }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not start checkout.");
       return json;
     },
 
@@ -206,7 +228,7 @@
     },
 
     needsPaymentSetup(status) {
-      if (status?.billingDisabled) return false;
+      if (!BILLING_ENABLED || status?.billingDisabled) return false;
       return Boolean(status?.configured && !status?.paymentMethodOnFile);
     },
   };
@@ -496,7 +518,9 @@
     if (billingStatus?.billingDisabled) {
       return (
         <div className="billing-settings-card">
-          <p className="help">Billing is not configured on this server.</p>
+          <p className="help" style={{ margin: 0 }}>
+            Your workspace is included with your account. Sign in with email to use all features.
+          </p>
         </div>
       );
     }

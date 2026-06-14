@@ -94,30 +94,12 @@ function LandingPage({ setupRequired = false }) {
             lead={
               setupRequired
                 ? "Sign-in will be available once cloud sync is configured on this server."
-                : "Sign in or subscribe to Pro for the full workspace."
+                : "Sign in with your email to access your workspace."
             }
             compact
           />
         </aside>
       </div>
-
-      <section className="landing-pricing" id="pricing" aria-labelledby="landing-pricing-heading">
-        <div className="landing-features-head">
-          <p className="landing-kicker">Pricing</p>
-          <h2 id="landing-pricing-heading">Choose how you want to work</h2>
-          <p className="landing-features-lead">
-            Subscribe to Pro for your full studio, or create a single invoice with pay-per-download — no account required.
-          </p>
-        </div>
-        {window.PricingCards && (
-          <PricingCards
-            landingPricing
-            onSelectPlan={() => {
-              document.querySelector(".landing-auth-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
-            }}
-          />
-        )}
-      </section>
 
       <section className="landing-features" aria-labelledby="landing-features-heading">
         <div className="landing-features-head">

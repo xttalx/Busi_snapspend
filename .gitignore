@@ -8,3 +8,5 @@ public/swe-worker-*.js
 public/swe-worker-*.js.map
 supabase-config.js
 public/classic/supabase-config.js
+billing-config.js
+public/classic/billing-config.js

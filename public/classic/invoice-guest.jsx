@@ -1,4 +1,4 @@
-/* Public invoice generator — no login: fill form → preview → pay → download */
+/* Public invoice generator — no login: fill form → preview → download PDF */
 const GUEST_DRAFT_KEY = "marten_guest_invoice_draft";
 const GUEST_PENDING_KEY = "marten_guest_invoice_pending";
 const GUEST_TOKEN_KEY = "marten_guest_token";
@@ -624,7 +624,7 @@ function GuestInvoiceApp() {
 
   const validateDraft = (source) => {
     if (!window.MartenBilling?.validateInvoiceCheckout) return { ok: true, issues: [] };
-    const needsEmail = Boolean(window.MartenBilling?.guestCheckout);
+    const needsEmail = window.BILLING_CONFIG?.enabled === true;
     return window.MartenBilling.validateInvoiceCheckout({
       business: source.business,
       client: source.client,
@@ -663,16 +663,20 @@ function GuestInvoiceApp() {
         return;
       }
 
-      let checkoutDraft = { ...draft, documentId, guestToken };
+      let checkoutDraft = { ...draftRef.current, documentId, guestToken };
       persistCheckoutDraft(checkoutDraft);
-      await paintInvoicePreview(checkoutDraft);
 
-      const email = draft.business.email?.trim() || draft.client.email?.trim() || "";
+      const email =
+        checkoutDraft.business.email?.trim() || checkoutDraft.client.email?.trim() || "";
+      const previewPromise = paintInvoicePreview(checkoutDraft).catch((err) => {
+        console.warn("Invoice preview prewarm failed:", err);
+      });
       const { checkoutUrl, guestToken: token } = await window.MartenBilling.guestCheckout(
         documentId,
         guestToken,
         email
       );
+      await previewPromise;
       if (token && token !== guestToken) {
         checkoutDraft = { ...checkoutDraft, guestToken: token };
         setDraft(checkoutDraft);
@@ -778,6 +782,10 @@ function GuestInvoiceApp() {
     : new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
         window.SEED?.BILLING?.payPerDownload ?? 9.99
       );
+  const guestBillingEnabled = window.BILLING_CONFIG?.enabled === true;
+  const downloadLabel = guestBillingEnabled
+    ? <>Pay &amp; download · {dlPrice}</>
+    : <>Download PDF</>;
 
   const { invoice, client, business } = draft;
 
@@ -789,7 +797,7 @@ function GuestInvoiceApp() {
           <span className="invoice-lite-tag">Invoice generator</span>
         </div>
         <div className="invoice-lite-header-actions">
-          <a href="/" className="btn sm ghost">Full workspace (Pro)</a>
+          <a href="/" className="btn sm ghost">Sign in for full workspace</a>
         </div>
       </header>
 
@@ -797,7 +805,9 @@ function GuestInvoiceApp() {
         <div className="invoice-lite-intro">
           <h1>Create your invoice</h1>
           <p>
-            No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) via Stripe to download the PDF.
+            {guestBillingEnabled
+              ? <>No account needed. Fill in the form, preview your invoice, then pay {dlPrice} (CAD) to download the PDF.</>
+              : <>No account needed. Fill in the form, preview your invoice, then download the PDF for free.</>}
           </p>
         </div>
 
@@ -827,7 +837,7 @@ function GuestInvoiceApp() {
             2. Preview
           </button>
           <button type="button" className="btn primary sm" onClick={handleDownload}>
-            <Icon name="download" size={13} /> 3. Pay &amp; download · {dlPrice}
+            <Icon name="download" size={13} /> 3. {downloadLabel}
           </button>
         </div>
 
@@ -985,7 +995,7 @@ function GuestInvoiceApp() {
               <Icon name="edit" size={13} /> Edit form
             </button>
             <button type="button" className="btn primary" onClick={handleDownload}>
-              <Icon name="download" size={13} /> Pay &amp; download · {dlPrice}
+              <Icon name="download" size={13} /> {downloadLabel}
             </button>
           </div>
         ) : null}
@@ -1011,6 +1021,7 @@ function GuestInvoiceApp() {
         />
       ) : null}
 
+      {guestBillingEnabled && window.PaywallModal ? (
       <PaywallModal
         open={paywall.open}
         onClose={() => setPaywall({ open: false, checkoutUrl: null })}
@@ -1031,6 +1042,7 @@ function GuestInvoiceApp() {
           window.location.href = paywall.checkoutUrl;
         }}
       />
+      ) : null}
 
       {toastMsg && (
         <div className="toast invoice-lite-toast">

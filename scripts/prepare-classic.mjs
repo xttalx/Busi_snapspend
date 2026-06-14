@@ -58,4 +58,17 @@ if (url && anonKey) {
   );
 }
 
+const billingEnabled = process.env.BILLING_ENABLED === "true";
+const billingConfigBody = `window.BILLING_CONFIG = {
+  enabled: ${billingEnabled},
+};
+`;
+writeFileSync(join(classicDir, "billing-config.js"), billingConfigBody);
+writeFileSync(join(root, "billing-config.js"), billingConfigBody);
+console.log(
+  billingEnabled
+    ? "Billing enabled (BILLING_ENABLED=true)."
+    : "Billing disabled — set BILLING_ENABLED=true to enable checkout."
+);
+
 console.log("Classic app files synced to public/classic/.");

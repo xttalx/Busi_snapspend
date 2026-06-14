@@ -1796,6 +1796,7 @@ function SettingsScreen({ business, setBusiness, toast, billingStatus, refreshBi
         </div>
       </div>
 
+      {!billingStatus?.billingDisabled && window.MartenBilling?.isEnabled?.() ? (
       <div className="settings-grid">
         <div>
           <h3>Billing &amp; plan</h3>
@@ -1811,6 +1812,7 @@ function SettingsScreen({ business, setBusiness, toast, billingStatus, refreshBi
           />
         </div>
       </div>
+      ) : null}
 
       <div className="settings-grid">
         <div>

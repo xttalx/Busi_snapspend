@@ -46,7 +46,13 @@ export function getLemonConfig() {
   };
 }
 
+/** Set BILLING_ENABLED=true to turn on Pro / pay-per-download (Lemon Squeezy + optional Stripe guest). */
+export function isBillingEnabled(): boolean {
+  return process.env.BILLING_ENABLED === "true";
+}
+
 export function isBillingConfigured(): boolean {
+  if (!isBillingEnabled()) return false;
   return Boolean(
     process.env.LEMONSQUEEZY_API_KEY &&
       process.env.LEMONSQUEEZY_STORE_ID &&

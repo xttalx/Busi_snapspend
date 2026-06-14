@@ -37,6 +37,20 @@ function lastMonthKeys(count, from = new Date()) {
   return keys;
 }
 
+function ytdMonthKeys(year, through = new Date()) {
+  const y = Number(year);
+  const lastMonth = through.getFullYear() === y ? through.getMonth() : 11;
+  const keys = [];
+  for (let m = 0; m <= lastMonth; m++) {
+    keys.push(`${y}-${String(m + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+function sumInKeys(keys, fn) {
+  return keys.reduce((s, k) => s + fn(k), 0);
+}
+
 function billPaidDate(bill) {
   const paidEvent = [...(bill.statusHistory || [])].
   reverse().
@@ -73,12 +87,38 @@ function Dashboard({ state, go }) {
     .filter(i => i.status === "paid" && i.date.startsWith(k))
     .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
 
-  const expensesIn = (k) => {
-    const direct = expenses.filter((e) => (e.date || "").startsWith(k)).reduce((s, e) => s + Number(e.amount || 0), 0);
-    const billsAsExpense = bills.filter((b) => (b.issueDate || "").startsWith(k)).reduce((s, b) => s + Number(b.amount || 0), 0);
-    return direct + billsAsExpense;
-  };
+  const directExpensesIn = (k) =>
+    expenses.filter((e) => (e.date || "").startsWith(k)).reduce((s, e) => s + Number(e.amount || 0), 0);
+  const billsIn = (k) =>
+    bills.filter((b) => (b.issueDate || "").startsWith(k)).reduce((s, b) => s + Number(b.amount || 0), 0);
+  const expensesIn = (k) => directExpensesIn(k) + billsIn(k);
   const wagesIn = (k) => paystubs.filter(p => p.issued && p.issued.startsWith(k)).reduce((s, p) => s + p.gross, 0);
+
+  const year = String(now.getFullYear());
+  const prevYear = String(now.getFullYear() - 1);
+  const yearLabel = year;
+  const ytdKeys = ytdMonthKeys(year, now);
+  const prevYtdKeys = ytdMonthKeys(prevYear, new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
+
+  const yearRevenue = sumInKeys(ytdKeys, revenue);
+  const yearExpense = sumInKeys(ytdKeys, directExpensesIn);
+  const yearWages = sumInKeys(ytdKeys, wagesIn);
+  const yearBills = sumInKeys(ytdKeys, billsIn);
+
+  const prevYearRevenue = sumInKeys(prevYtdKeys, revenue);
+  const prevYearExpense = sumInKeys(prevYtdKeys, directExpensesIn);
+  const prevYearWages = sumInKeys(prevYtdKeys, wagesIn);
+  const prevYearBills = sumInKeys(prevYtdKeys, billsIn);
+
+  const dYearRev = pctChange(yearRevenue, prevYearRevenue);
+  const dYearExp = pctChange(yearExpense, prevYearExpense);
+  const dYearWages = pctChange(yearWages, prevYearWages);
+  const dYearBills = pctChange(yearBills, prevYearBills);
+
+  const yearRevSpark = ytdKeys.map(revenue);
+  const yearExpSpark = ytdKeys.map(directExpensesIn);
+  const yearWageSpark = ytdKeys.map(wagesIn);
+  const yearBillsSpark = ytdKeys.map(billsIn);
 
   const monthRevenue = revenue(monthKey);
   const monthExpense = expensesIn(monthKey);
@@ -119,6 +159,45 @@ function Dashboard({ state, go }) {
 
   return (
     <>
+      <div className="kpis kpis-4">
+        <div className="kpi">
+          <div className="kicker">{yearLabel} revenue · YTD</div>
+          <div className="value"><span className="sym">$</span>{fmt(yearRevenue)}</div>
+          <div className={"delta " + (dYearRev >= 0 ? "up" : "down")}>
+            <Icon name={dYearRev >= 0 ? "arrow_up" : "arrow_down"} size={11} />
+            {Math.abs(dYearRev).toFixed(1)}% vs. {prevYear} YTD
+          </div>
+          <Sparkline values={yearRevSpark.length ? yearRevSpark : [0]} color="var(--positive)" />
+        </div>
+        <div className="kpi">
+          <div className="kicker">{yearLabel} expenses · YTD</div>
+          <div className="value"><span className="sym">$</span>{fmt(yearExpense)}</div>
+          <div className={"delta " + (dYearExp <= 0 ? "up" : "down")}>
+            <Icon name={dYearExp <= 0 ? "arrow_down" : "arrow_up"} size={11} />
+            {Math.abs(dYearExp).toFixed(1)}% vs. {prevYear} YTD
+          </div>
+          <Sparkline values={yearExpSpark.length ? yearExpSpark : [0]} color="var(--accent)" />
+        </div>
+        <div className="kpi">
+          <div className="kicker">{yearLabel} wages · YTD</div>
+          <div className="value"><span className="sym">$</span>{fmt(yearWages)}</div>
+          <div className={"delta " + (dYearWages <= 0 ? "up" : "down")}>
+            <Icon name={dYearWages <= 0 ? "arrow_down" : "arrow_up"} size={11} />
+            {Math.abs(dYearWages).toFixed(1)}% vs. {prevYear} YTD
+          </div>
+          <Sparkline values={yearWageSpark.length ? yearWageSpark : [0]} color="var(--ink-2)" />
+        </div>
+        <div className="kpi">
+          <div className="kicker">{yearLabel} bills · YTD</div>
+          <div className="value"><span className="sym">$</span>{fmt(yearBills)}</div>
+          <div className={"delta " + (dYearBills <= 0 ? "up" : "down")}>
+            <Icon name={dYearBills <= 0 ? "arrow_down" : "arrow_up"} size={11} />
+            {Math.abs(dYearBills).toFixed(1)}% vs. {prevYear} YTD
+          </div>
+          <Sparkline values={yearBillsSpark.length ? yearBillsSpark : [0]} color="#6e1f1f" />
+        </div>
+      </div>
+
       <div className="kpis">
         <div className="kpi">
           <div className="kicker">{monthLabel} revenue · invoices paid</div>

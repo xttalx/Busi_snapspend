@@ -1,9 +1,10 @@
 import Stripe from "stripe";
-import { BILLING, getSiteUrl, requireEnv } from "./config";
+import { BILLING, getSiteUrl, isBillingEnabled, requireEnv } from "./config";
 
 let client: Stripe | null = null;
 
 export function isStripeGuestConfigured(): boolean {
+  if (!isBillingEnabled()) return false;
   return Boolean(
     process.env.STRIPE_SECRET_KEY &&
       process.env.STRIPE_WEBHOOK_SECRET &&

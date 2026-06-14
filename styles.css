@@ -443,6 +443,14 @@ body {
   border-bottom: 1px solid var(--rule);
   margin-bottom: 32px;
 }
+.kpis.kpis-4 {
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 0;
+  border-bottom: none;
+}
+.kpis.kpis-4 + .kpis {
+  border-top: none;
+}
 .kpi {
   padding: 22px 24px 22px 0;
   border-right: 1px solid var(--rule);
