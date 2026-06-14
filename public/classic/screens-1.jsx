@@ -115,10 +115,18 @@ function Dashboard({ state, go }) {
   const dYearWages = pctChange(yearWages, prevYearWages);
   const dYearBills = pctChange(yearBills, prevYearBills);
 
+  const yearNet = yearRevenue - yearExpense - yearWages - yearBills;
+  const prevYearNet = prevYearRevenue - prevYearExpense - prevYearWages - prevYearBills;
+  const dYearNet = pctChange(yearNet, prevYearNet);
+
+  const netIn = (k) => revenue(k) - directExpensesIn(k) - billsIn(k) - wagesIn(k);
+  const monthNetIn = (k) => revenue(k) - expensesIn(k) - wagesIn(k);
+
   const yearRevSpark = ytdKeys.map(revenue);
   const yearExpSpark = ytdKeys.map(directExpensesIn);
   const yearWageSpark = ytdKeys.map(wagesIn);
   const yearBillsSpark = ytdKeys.map(billsIn);
+  const yearNetSpark = ytdKeys.map(netIn);
 
   const monthRevenue = revenue(monthKey);
   const monthExpense = expensesIn(monthKey);
@@ -139,6 +147,7 @@ function Dashboard({ state, go }) {
   const revSpark = sparkKeys.map(revenue);
   const expSpark = sparkKeys.map(expensesIn);
   const wageSpark = sparkKeys.map(wagesIn);
+  const monthNetSpark = sparkKeys.map(monthNetIn);
   const paidThisMonth = invoices.filter(i => i.status === "paid" && i.date.startsWith(monthKey)).length;
   const expenseEntriesThisMonth =
   expenses.filter((e) => (e.date || "").startsWith(monthKey)).length +
@@ -157,9 +166,24 @@ function Dashboard({ state, go }) {
 
   const fmt = (n) => Math.round(n).toLocaleString("en-US");
 
+  const NetKpi = ({ label, net, delta, compareLabel, spark }) => (
+    <div className="kpi kpi-net">
+      <div className="kicker">{label}</div>
+      <div className={"value " + (net >= 0 ? "positive" : "negative")}>
+        <span className="sym">$</span>{fmt(Math.abs(net))}
+        <span className="kpi-net-tag">{net >= 0 ? "profit" : "loss"}</span>
+      </div>
+      <div className={"delta " + (delta >= 0 ? "up" : "down")}>
+        <Icon name={delta >= 0 ? "arrow_up" : "arrow_down"} size={11} />
+        {Math.abs(delta).toFixed(1)}% vs. {compareLabel}
+      </div>
+      <Sparkline values={spark.length ? spark : [0]} color={net >= 0 ? "var(--positive)" : "var(--accent)"} />
+    </div>
+  );
+
   return (
     <>
-      <div className="kpis kpis-4">
+      <div className="kpis kpis-5">
         <div className="kpi">
           <div className="kicker">{yearLabel} revenue · YTD</div>
           <div className="value"><span className="sym">$</span>{fmt(yearRevenue)}</div>
@@ -196,9 +220,16 @@ function Dashboard({ state, go }) {
           </div>
           <Sparkline values={yearBillsSpark.length ? yearBillsSpark : [0]} color="#6e1f1f" />
         </div>
+        <NetKpi
+          label={`${yearLabel} net · YTD`}
+          net={yearNet}
+          delta={dYearNet}
+          compareLabel={`${prevYear} YTD`}
+          spark={yearNetSpark}
+        />
       </div>
 
-      <div className="kpis">
+      <div className="kpis kpis-4">
         <div className="kpi">
           <div className="kicker">{monthLabel} revenue · invoices paid</div>
           <div className="value"><span className="sym">$</span>{fmt(monthRevenue)}</div>
@@ -226,6 +257,13 @@ function Dashboard({ state, go }) {
           </div>
           <Sparkline values={wageSpark.length ? wageSpark : [0]} color="var(--ink-2)" />
         </div>
+        <NetKpi
+          label={`${monthLabel} net · profit / loss`}
+          net={monthNet}
+          delta={dNet}
+          compareLabel={prevMonthLabel}
+          spark={monthNetSpark}
+        />
       </div>
 
       {/* Cash flow breakdown — Revenue − Expenses − Wages = Net */}

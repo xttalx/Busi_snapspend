@@ -448,9 +448,28 @@ body {
   margin-bottom: 0;
   border-bottom: none;
 }
+.kpis.kpis-5 {
+  grid-template-columns: repeat(5, 1fr);
+  margin-bottom: 0;
+  border-bottom: none;
+}
+.kpis.kpis-5 + .kpis,
 .kpis.kpis-4 + .kpis {
   border-top: none;
 }
+.kpi.kpi-net .value.positive { color: var(--positive); }
+.kpi.kpi-net .value.negative { color: var(--accent); }
+.kpi-net-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-left: 6px;
+}
+.kpi.kpi-net .value.positive .kpi-net-tag { color: var(--positive); opacity: 0.85; }
+.kpi.kpi-net .value.negative .kpi-net-tag { color: var(--accent); opacity: 0.85; }
 .kpi {
   padding: 22px 24px 22px 0;
   border-right: 1px solid var(--rule);
