@@ -55,6 +55,7 @@ const EMPTY_WORKSPACE = {
   invoices: [],
   employees: [],
   paystubs: [],
+  recurringExpenses: [],
   userBusiness: DEFAULT_USER_BUSINESS,
 };
 
@@ -69,6 +70,7 @@ function reducer(state, action) {
         invoices: action.payload.invoices,
         employees: action.payload.employees,
         paystubs: action.payload.paystubs,
+        recurringExpenses: action.payload.recurringExpenses || [],
         userBusiness: action.payload.userBusiness,
       };
     case "ADD_EXPENSE":
@@ -80,6 +82,20 @@ function reducer(state, action) {
       };
     case "REMOVE_EXPENSE":
       return { ...state, expenses: state.expenses.filter((e) => e.id !== action.id) };
+    case "ADD_RECURRING_EXPENSE":
+      return { ...state, recurringExpenses: [action.template, ...state.recurringExpenses] };
+    case "UPDATE_RECURRING_EXPENSE":
+      return {
+        ...state,
+        recurringExpenses: state.recurringExpenses.map((t) =>
+          t.id === action.template.id ? action.template : t
+        ),
+      };
+    case "REMOVE_RECURRING_EXPENSE":
+      return {
+        ...state,
+        recurringExpenses: state.recurringExpenses.filter((t) => t.id !== action.id),
+      };
     case "ADD_INVOICE":
       return { ...state, invoices: [action.invoice, ...state.invoices] };
     case "UPDATE_INVOICE":
@@ -437,7 +453,20 @@ function App() {
     setDataLoading(true);
     window.MartenAPI.fetchAllData(userId)
       .then((data) => {
-        if (active) dispatch({ type: "HYDRATE", payload: data });
+        if (!active) return;
+        const { _pendingRecurring, ...payload } = data;
+        dispatch({ type: "HYDRATE", payload });
+        if (_pendingRecurring?.generated?.length) {
+          const sync = supabaseEnabled && userId
+            ? window.MartenAPI.createPersistDispatch(dispatch, () => stateRef.current, userId)
+            : dispatch;
+          _pendingRecurring.generated.forEach((expense) =>
+            sync({ type: "ADD_EXPENSE", expense })
+          );
+          _pendingRecurring.updatedTemplates.forEach((template) =>
+            sync({ type: "UPDATE_RECURRING_EXPENSE", template })
+          );
+        }
       })
       .catch((err) => console.error("Failed to load data:", err))
       .finally(() => {

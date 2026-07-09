@@ -133,26 +133,79 @@
     try {
       return await fetchTable(table, userId);
     } catch (error) {
-      if (table === "bills") {
-        console.warn("Bills table not found yet; run updated schema.sql migration.");
+      if (table === "bills" || table === "recurring_expenses") {
+        console.warn(`${table} table not found yet; run updated schema.sql migration.`);
         return [];
       }
       throw error;
     }
   }
 
+  function advanceRecurringDate(dateStr, interval) {
+    const d = new Date(dateStr + "T12:00:00");
+    if (interval === "weekly") d.setDate(d.getDate() + 7);
+    else if (interval === "biweekly") d.setDate(d.getDate() + 14);
+    else d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function applyDueRecurring(templates, today) {
+    const todayStr = today || new Date().toISOString().slice(0, 10);
+    const generated = [];
+    const updatedTemplates = [];
+    for (const t of templates || []) {
+      if (!t.active) continue;
+      let next = t.nextDate;
+      let lastRun = t.lastRun;
+      const batch = [];
+      let guard = 0;
+      while (next && next <= todayStr && guard < 36) {
+        batch.push({
+          id: "e" + Date.now() + "_" + guard + "_" + Math.random().toString(36).slice(2, 5),
+          date: next,
+          vendor: t.vendor,
+          note: t.note ? t.note + " (recurring)" : "(recurring)",
+          category: t.category,
+          method: t.method,
+          amount: t.amount,
+          receipt: null,
+          recurringId: t.id,
+        });
+        lastRun = next;
+        next = advanceRecurringDate(next, t.interval);
+        guard++;
+      }
+      if (batch.length) {
+        generated.push(...batch);
+        updatedTemplates.push({ ...t, lastRun, nextDate: next });
+      }
+    }
+    return { generated, updatedTemplates };
+  }
+
+  async function saveRecurringExpense(userId, template) {
+    await upsertEntity("recurring_expenses", userId, template);
+    return template;
+  }
+
   async function fetchAllData(userId) {
-    const [expenses, bills, clients, invoices, employees, paystubs, profileResult] = await Promise.all([
+    const [expenses, bills, clients, invoices, employees, paystubs, recurringExpenses, profileResult] = await Promise.all([
       fetchTable("expenses", userId),
       fetchTableSafe("bills", userId),
       fetchTable("clients", userId),
       fetchTable("invoices", userId),
       fetchTable("employees", userId),
       fetchTable("paystubs", userId),
+      fetchTableSafe("recurring_expenses", userId),
       sb().from("business_profiles").select("profile").eq("user_id", userId).maybeSingle(),
     ]);
 
     const userBusiness = await ensureBusinessProfile(userId, profileResult);
+    const { generated, updatedTemplates } = applyDueRecurring(recurringExpenses);
+    const mergedRecurring = recurringExpenses.map((t) => {
+      const u = updatedTemplates.find((x) => x.id === t.id);
+      return u || t;
+    });
 
     return {
       expenses,
@@ -161,7 +214,9 @@
       invoices,
       employees,
       paystubs,
+      recurringExpenses: mergedRecurring,
       userBusiness,
+      _pendingRecurring: { generated, updatedTemplates },
     };
   }
 
@@ -175,6 +230,13 @@
         break;
       case "REMOVE_EXPENSE":
         await deleteEntity("expenses", action.id);
+        break;
+      case "ADD_RECURRING_EXPENSE":
+      case "UPDATE_RECURRING_EXPENSE":
+        await saveRecurringExpense(userId, action.template);
+        break;
+      case "REMOVE_RECURRING_EXPENSE":
+        await deleteEntity("recurring_expenses", action.id);
         break;
       case "ADD_INVOICE":
       case "UPDATE_INVOICE":
@@ -336,6 +398,9 @@
     fetchAllData,
     saveExpense,
     saveBill,
+    saveRecurringExpense,
+    advanceRecurringDate,
+    applyDueRecurring,
     getReceiptUrl,
     createPersistDispatch,
   };

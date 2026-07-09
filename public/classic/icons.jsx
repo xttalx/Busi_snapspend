@@ -27,6 +27,7 @@ const ICONS = {
   chev_r:    <><path d="M6 3l4 5-4 5"/></>,
   external:  <><path d="M6 3H3v10h10v-3"/><path d="M9 3h4v4"/><path d="M7 9l6-6"/></>,
   sparkles:  <><path d="M8 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/><path d="M13 9l.5 1.5L15 11l-1.5.5L13 13l-.5-1.5L11 11l1.5-.5z"/></>,
+  loop:      <><path d="M4.5 5.5A4.5 4.5 0 0 1 11.5 3h1"/><path d="M11.5 3l-1.5 1.5L11.5 6"/><path d="M11.5 10.5A4.5 4.5 0 0 1 4.5 13h-1"/><path d="M4.5 13l1.5-1.5L4.5 10"/></>,
 };
 
 function Icon({ name, size = 16, stroke = 1.4, ...rest }) {

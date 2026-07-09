@@ -1,6 +1,19 @@
 /* Dashboard + Expenses screens */
 const { useState, useMemo, useEffect } = React;
 
+const RECURRING_PRESETS = [
+  { vendor: "Car payment", note: "Auto loan / lease", category: "utilities", interval: "monthly" },
+  { vendor: "Phone bill", note: "Mobile plan", category: "utilities", interval: "monthly" },
+  { vendor: "Gas", note: "Fuel", category: "travel", interval: "weekly" },
+  { vendor: "Groceries", note: "Weekly groceries", category: "meals", interval: "weekly" },
+];
+
+const RECURRING_INTERVALS = [
+  { id: "weekly", label: "Weekly" },
+  { id: "biweekly", label: "Every 2 weeks" },
+  { id: "monthly", label: "Monthly" },
+];
+
 /* ---------- Dashboard ---------- */
 function Sparkline({ values, color = "currentColor", height = 38 }) {
   const w = 180, h = height, pad = 2;
@@ -466,10 +479,11 @@ function ReceiptViewer({ expense, onClose }) {
   );
 }
 
-function ExpenseDrawer({ open, onClose, onSave, categories }) {
+function ExpenseDrawer({ open, onClose, onSave, categories, initialRecurring }) {
   const today = new Date().toISOString().slice(0, 10);
   const blank = { date: today, vendor: "", note: "", category: categories[0].id, method: "Amex 4012", amount: "", receipt: null };
   const [form, setForm] = useState(blank);
+  const [recurring, setRecurring] = useState({ enabled: false, interval: "monthly" });
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = React.useRef(null);
@@ -477,10 +491,21 @@ function ExpenseDrawer({ open, onClose, onSave, categories }) {
   useEffect(() => {
     if (open) {
       setForm(blank);
+      setRecurring(initialRecurring || { enabled: false, interval: "monthly" });
       setError(null);
       setDragOver(false);
     }
-  }, [open]);
+  }, [open, initialRecurring]);
+
+  const applyPreset = (preset) => {
+    setForm((f) => ({
+      ...f,
+      vendor: preset.vendor,
+      note: preset.note,
+      category: categories.some((c) => c.id === preset.category) ? preset.category : f.category,
+    }));
+    setRecurring({ enabled: true, interval: preset.interval });
+  };
 
   // Read a File into a base64 data URL so we can persist it in state and
   // render an inline preview without depending on a backend.
@@ -545,10 +570,50 @@ function ExpenseDrawer({ open, onClose, onSave, categories }) {
               <input className="input mono" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
             </div>
             <div className="field">
-              <label>Amount</label>
+              <div className="field-label-row">
+                <label>Amount</label>
+                <button
+                  type="button"
+                  className={"iconbtn recurring-toggle" + (recurring.enabled ? " active" : "")}
+                  title={recurring.enabled ? "Recurring on — click to turn off" : "Make this a recurring expense"}
+                  aria-pressed={recurring.enabled}
+                  onClick={() => setRecurring((r) => ({ ...r, enabled: !r.enabled }))}>
+                  <Icon name="loop" size={14} />
+                </button>
+              </div>
               <input className="input mono" type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
             </div>
           </div>
+          {recurring.enabled && (
+            <div className="recurring-panel">
+              <div className="recurring-panel-head">
+                <Icon name="loop" size={14} />
+                <span>Repeats automatically</span>
+              </div>
+              <div className="field">
+                <label>Frequency</label>
+                <select
+                  className="select"
+                  value={recurring.interval}
+                  onChange={(e) => setRecurring((r) => ({ ...r, interval: e.target.value }))}>
+                  {RECURRING_INTERVALS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="recurring-presets">
+                {RECURRING_PRESETS.map((preset) => (
+                  <button
+                    key={preset.vendor}
+                    type="button"
+                    className="chip sm"
+                    onClick={() => applyPreset(preset)}>
+                    {preset.vendor}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="field">
             <label>Vendor</label>
             <input className="input" placeholder="e.g. Figma, Lyft, WeWork" value={form.vendor} onChange={e => setForm({ ...form, vendor: e.target.value })} />
@@ -630,9 +695,10 @@ function ExpenseDrawer({ open, onClose, onSave, categories }) {
         <div className="foot">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={!valid}
-            onClick={() => onSave({ ...form, amount: Number(form.amount) })}
+            onClick={() => onSave({ ...form, amount: Number(form.amount) }, recurring)}
             style={{ opacity: valid ? 1 : 0.5 }}>
-            <Icon name="check" size={13} /> Save expense
+            <Icon name={recurring.enabled ? "loop" : "check"} size={13} />
+            {recurring.enabled ? "Save & repeat" : "Save expense"}
           </button>
         </div>
       </div>
@@ -646,8 +712,12 @@ function Expenses({ state, dispatch, toast }) {
   const [expenseMonth, setExpenseMonth] = useState("");
   const [wageMonth, setWageMonth] = useState("");
   const [drawer, setDrawer] = useState(false);
+  const [drawerRecurring, setDrawerRecurring] = useState(false);
   const [viewing, setViewing] = useState(null); // expense whose receipt is open
   const receiptInputRefs = React.useRef({});
+
+  const recurringList = state.recurringExpenses || [];
+  const intervalLabel = (id) => RECURRING_INTERVALS.find((i) => i.id === id)?.label || id;
 
   const paidBillEntries = useMemo(() =>
   (state.bills || []).
@@ -870,11 +940,61 @@ function Expenses({ state, dispatch, toast }) {
           </div>
         </div>
         <div className="right">
-          <button className="btn primary" onClick={() => setDrawer(true)}>
+          <button
+            className="btn ghost"
+            onClick={() => { setDrawerRecurring(true); setDrawer(true); }}
+            title="New recurring expense">
+            <Icon name="loop" size={13} />
+          </button>
+          <button className="btn primary" onClick={() => { setDrawerRecurring(false); setDrawer(true); }}>
             <Icon name="plus" size={13} /> New expense
           </button>
         </div>
       </div>
+
+      {recurringList.length > 0 && (
+        <div className="recurring-strip">
+          <div className="recurring-strip-head">
+            <Icon name="loop" size={14} />
+            <span>Recurring expenses</span>
+            <span className="meta">{recurringList.filter((r) => r.active !== false).length} active</span>
+          </div>
+          <div className="recurring-strip-list">
+            {recurringList.map((r) => (
+              <div key={r.id} className={"recurring-card" + (r.active === false ? " paused" : "")}>
+                <div className="recurring-card-main">
+                  <div className="vendor">{r.vendor}</div>
+                  <div className="sub">
+                    {fmtMoney(r.amount)} · {intervalLabel(r.interval)} · next {r.nextDate || "—"}
+                  </div>
+                </div>
+                <div className="recurring-card-actions">
+                  <button
+                    className="iconbtn"
+                    title={r.active === false ? "Resume" : "Pause"}
+                    onClick={() => dispatch({
+                      type: "UPDATE_RECURRING_EXPENSE",
+                      template: { ...r, active: r.active === false },
+                    })}>
+                    <Icon name={r.active === false ? "arrow" : "close"} size={12} />
+                  </button>
+                  <button
+                    className="iconbtn"
+                    title="Remove recurring rule"
+                    onClick={() => {
+                      if (confirm(`Stop repeating ${r.vendor}?`)) {
+                        dispatch({ type: "REMOVE_RECURRING_EXPENSE", id: r.id });
+                        toast(`Removed recurring ${r.vendor}`);
+                      }
+                    }}>
+                    <Icon name="trash" size={12} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <table className="tbl">
         <thead>
@@ -903,7 +1023,14 @@ function Expenses({ state, dispatch, toast }) {
               <tr key={e.id}>
                 <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{e.date}</span></td>
                 <td>
-                  <div className="vendor">{e.vendor}</div>
+                  <div className="vendor">
+                    {e.vendor}
+                    {e.recurringId && (
+                      <span className="recurring-badge" title="Auto-logged from recurring rule">
+                        <Icon name="loop" size={10} />
+                      </span>
+                    )}
+                  </div>
                   <div className="sub">{e.note}{e.isBill ? " · from Bills" : ""}</div>
                 </td>
                 <td>
@@ -967,11 +1094,29 @@ function Expenses({ state, dispatch, toast }) {
         open={drawer}
         onClose={() => setDrawer(false)}
         categories={state.CATEGORIES}
-        onSave={(form) => {
+        initialRecurring={drawerRecurring ? { enabled: true, interval: "monthly" } : null}
+        onSave={(form, recurring) => {
           const expense = { id: "e" + Date.now(), ...form, amount: Number(form.amount) };
           dispatch({ type: "ADD_EXPENSE", expense });
+          if (recurring?.enabled) {
+            const nextDate = window.MartenAPI.advanceRecurringDate(form.date, recurring.interval);
+            const template = {
+              id: "re" + Date.now(),
+              vendor: form.vendor,
+              note: form.note,
+              category: form.category,
+              method: form.method,
+              amount: Number(form.amount),
+              interval: recurring.interval,
+              nextDate,
+              active: true,
+            };
+            dispatch({ type: "ADD_RECURRING_EXPENSE", template });
+            toast(`Logged ${fmtMoney(form.amount)} — repeats ${intervalLabel(recurring.interval).toLowerCase()}`);
+          } else {
+            toast(`Logged ${fmtMoney(form.amount)} at ${form.vendor}`);
+          }
           setDrawer(false);
-          toast(`Logged ${fmtMoney(form.amount)} at ${form.vendor}`);
         }}
       />
 
