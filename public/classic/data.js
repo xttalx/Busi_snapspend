@@ -176,6 +176,7 @@ window.SEED = (() => {
     expenses,
     clients,
     invoices,
+    estimates: [],
     employees,
     paystubs,
     COUNTRY_PRESETS,

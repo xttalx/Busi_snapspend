@@ -4,6 +4,7 @@ const ICONS = {
   expense:   <><path d="M2 4h12v8H2z"/><path d="M2 7h12"/><circle cx="11.5" cy="9.5" r="1" fill="currentColor"/></>,
   invoice:   <><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/><path d="M5 8h6M5 10.5h6M5 13h3"/></>,
   paystub:   <><path d="M3 3h10v10H3z"/><path d="M3 6h10"/><path d="M5 9h2M5 11h4"/><path d="M10 9.5h1.5v2H10z"/></>,
+  estimate:  <><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/><path d="M5 8h6M5 10.5h4M5 13h3"/></>,
   employees: <><circle cx="6" cy="6" r="2.4"/><path d="M2 13c0-2 2-3.4 4-3.4S10 11 10 13"/><circle cx="11.5" cy="6.5" r="1.8"/><path d="M9.5 12.5c0-1.4 1-2.5 2.5-2.5 1.6 0 2.5 1.1 2.5 2.5"/></>,
   reports:   <><path d="M2 13h12"/><path d="M4 13V8"/><path d="M7 13V5"/><path d="M10 13V9"/><path d="M13 13V3"/></>,
   business:  <><path d="M2 14h12"/><path d="M3 14V5l5-3 5 3v9"/><path d="M6 8h1M9 8h1M6 11h1M9 11h1"/></>,

@@ -133,7 +133,7 @@
     try {
       return await fetchTable(table, userId);
     } catch (error) {
-      if (table === "bills" || table === "recurring_expenses") {
+      if (table === "bills" || table === "recurring_expenses" || table === "estimates") {
         console.warn(`${table} table not found yet; run updated schema.sql migration.`);
         return [];
       }
@@ -188,14 +188,27 @@
     return template;
   }
 
+  async function saveEstimate(userId, estimate) {
+    let payload = { ...estimate };
+    if (payload.drawing?.dataUrl && !payload.drawing.storagePath) {
+      payload = {
+        ...payload,
+        drawing: await uploadReceipt(userId, `estimate-${estimate.id}`, payload.drawing),
+      };
+    }
+    await upsertEntity("estimates", userId, payload);
+    return payload;
+  }
+
   async function fetchAllData(userId) {
-    const [expenses, bills, clients, invoices, employees, paystubs, recurringExpenses, profileResult] = await Promise.all([
+    const [expenses, bills, clients, invoices, employees, paystubs, estimates, recurringExpenses, profileResult] = await Promise.all([
       fetchTable("expenses", userId),
       fetchTableSafe("bills", userId),
       fetchTable("clients", userId),
       fetchTable("invoices", userId),
       fetchTable("employees", userId),
       fetchTable("paystubs", userId),
+      fetchTableSafe("estimates", userId),
       fetchTableSafe("recurring_expenses", userId),
       sb().from("business_profiles").select("profile").eq("user_id", userId).maybeSingle(),
     ]);
@@ -214,6 +227,7 @@
       invoices,
       employees,
       paystubs,
+      estimates,
       recurringExpenses: mergedRecurring,
       userBusiness,
       _pendingRecurring: { generated, updatedTemplates },
@@ -241,6 +255,13 @@
       case "ADD_INVOICE":
       case "UPDATE_INVOICE":
         await upsertEntity("invoices", userId, action.invoice);
+        break;
+      case "ADD_ESTIMATE":
+      case "UPDATE_ESTIMATE":
+        await saveEstimate(userId, action.estimate);
+        break;
+      case "REMOVE_ESTIMATE":
+        await deleteEntity("estimates", action.id);
         break;
       case "ADD_BILL":
       case "UPDATE_BILL":
@@ -398,6 +419,7 @@
     fetchAllData,
     saveExpense,
     saveBill,
+    saveEstimate,
     saveRecurringExpense,
     advanceRecurringDate,
     applyDueRecurring,

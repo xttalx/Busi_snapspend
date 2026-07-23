@@ -132,6 +132,10 @@ async function downloadPaystubPdf({ stub, element }) {
   await downloadPreviewPdfFromElement(element, `paystub-${stub.id || Date.now()}.pdf`);
 }
 
+async function downloadEstimatePdf({ estimate, element, fast = false }) {
+  await downloadPreviewPdfFromElement(element, `${estimate.number || "estimate"}.pdf`, { fast });
+}
+
 function InvoiceDocument({ invoice, client, business }) {
   const subtotal = invoice.items.reduce((s, it) => s + it.qty * it.rate, 0);
   const tax = subtotal * (invoice.taxRate || 0);
@@ -324,7 +328,125 @@ function PaystubDocument({ stub, employee, business }) {
 
 }
 
+function EstimateDocument({ estimate, business }) {
+  const items = estimate.items || [];
+  const subtotal = items.reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
+  const tax = subtotal * (estimate.taxRate || 0);
+  const total = subtotal + tax;
+  const drawing = estimate.drawing;
+  const drawingSrc = drawing?.dataUrl || drawing?.url || null;
+  const isDrawingImage = drawing && (
+    (drawing.type && String(drawing.type).startsWith("image/")) ||
+    (drawingSrc && String(drawingSrc).startsWith("data:image/"))
+  );
+
+  return (
+    <div className="doc-shell">
+      <div className="head-block">
+        <div>
+          <div className="doc-kicker">Estimate</div>
+          <h1 className="doc-title" style={{ fontFamily: "Arial" }}>{business.name}</h1>
+        </div>
+        <div className="doc-num">
+          <div>{estimate.number}</div>
+          <div style={{ opacity: 0.7, marginTop: 4 }}>Issued {fmtDate(estimate.date)}</div>
+        </div>
+      </div>
+
+      <div className="body-block">
+        <div className="parties">
+          <div>
+            <div className="lbl">Prepared for</div>
+            <p className="name" style={{ fontFamily: "Arial" }}>{estimate.clientName || "—"}</p>
+            {estimate.clientCompany && <p>{estimate.clientCompany}</p>}
+            {estimate.clientAddress && <p>{estimate.clientAddress}</p>}
+            {estimate.clientEmail && <p>{estimate.clientEmail}</p>}
+            {estimate.clientPhone && <p>{estimate.clientPhone}</p>}
+          </div>
+          <div>
+            <div className="lbl">From</div>
+            <p className="name" style={{ fontFamily: "Arial" }}>{business.name}</p>
+            <p>{business.address}</p>
+            <p>{business.email}</p>
+            {business.businessNo && <p>Business No.: {business.businessNo}</p>}
+            {business.gstTaxId && <p>GST/Tax ID: {business.gstTaxId}</p>}
+          </div>
+        </div>
+
+        <div className="summary-grid">
+          <div className="cell">
+            <div className="lbl">Estimate no.</div>
+            <div className="val">{estimate.number}</div>
+          </div>
+          <div className="cell">
+            <div className="lbl">Date of issue</div>
+            <div className="val">{fmtDate(estimate.date)}</div>
+          </div>
+          <div className="cell">
+            <div className="lbl">Valid until</div>
+            <div className="val">{fmtDate(estimate.validUntil)}</div>
+          </div>
+        </div>
+
+        {drawing && (
+          <div className="estimate-drawing">
+            <div className="lbl" style={{ marginBottom: 8 }}>Job drawing</div>
+            {isDrawingImage && drawingSrc ? (
+              <img src={drawingSrc} alt={drawing.name || "Drawing"} className="estimate-drawing-img" />
+            ) : (
+              <p className="estimate-drawing-file">{drawing.name || "Attached drawing"}</p>
+            )}
+          </div>
+        )}
+
+        <table className="items">
+          <thead>
+            <tr>
+              <th>Work</th>
+              <th className="num" style={{ width: 60 }}>Qty</th>
+              <th className="num" style={{ width: 100 }}>Unit price</th>
+              <th className="num" style={{ width: 110 }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, i) =>
+              <tr key={i}>
+                <td>
+                  <div className="desc">{it.desc || "—"}</div>
+                  {it.sub && <div className="sub">{it.sub}</div>}
+                </td>
+                <td className="num">{it.qty}</td>
+                <td className="num">{fmtMoney(it.rate)}</td>
+                <td className="num">{fmtMoney(Number(it.qty || 0) * Number(it.rate || 0))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="totals">
+          <div className="stack">
+            <div className="row"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
+            {estimate.taxRate > 0 &&
+              <div className="row"><span>Tax · {(estimate.taxRate * 100).toFixed(2)}%</span><span>{fmtMoney(tax)}</span></div>
+            }
+            <div className="row grand"><span>Estimate total</span><span className="v">{fmtMoney(total)}</span></div>
+          </div>
+        </div>
+
+        {estimate.notes &&
+          <div className="footnote">
+            <strong style={{ color: "#111", letterSpacing: "0.18em", fontSize: 9.5, textTransform: "uppercase", fontFamily: "var(--mono)", fontWeight: 500 }}>Notes</strong>
+            <div style={{ marginTop: 6 }}>{estimate.notes}</div>
+          </div>
+        }
+      </div>
+    </div>
+  );
+}
+
 window.InvoiceDocument = InvoiceDocument;
 window.PaystubDocument = PaystubDocument;
+window.EstimateDocument = EstimateDocument;
 window.downloadInvoicePdf = downloadInvoicePdf;
 window.downloadPaystubPdf = downloadPaystubPdf;
+window.downloadEstimatePdf = downloadEstimatePdf;

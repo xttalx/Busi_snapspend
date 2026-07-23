@@ -416,6 +416,457 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
 }
 window.InvoicesScreen = InvoicesScreen;
 
+/* ---------- Estimates ---------- */
+function EstimateEditor({ estimate, clients, onChange }) {
+  const update = (patch) => onChange({ ...estimate, ...patch });
+  const updateItem = (i, patch) => {
+    const items = estimate.items.map((it, idx) => idx === i ? { ...it, ...patch } : it);
+    update({ items });
+  };
+  const addItem = () => update({ items: [...(estimate.items || []), { desc: "", sub: "", qty: 1, rate: 0 }] });
+  const removeItem = (i) => update({ items: estimate.items.filter((_, idx) => idx !== i) });
+
+  const fillFromClient = (clientId) => {
+    const c = (clients || []).find((x) => x.id === clientId);
+    if (!c) return;
+    update({
+      clientId: c.id,
+      clientName: c.contact || c.name || "",
+      clientCompany: c.name || "",
+      clientAddress: c.address || "",
+      clientEmail: c.email || "",
+      clientPhone: c.phone || "",
+    });
+  };
+
+  const handleDrawing = (file) => {
+    if (!file) return;
+    const okTypes = /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf)$/i;
+    if (!okTypes.test(file.type)) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      update({
+        drawing: {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          dataUrl: reader.result,
+        },
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const drawing = estimate.drawing;
+  const isImage = drawing && drawing.type && drawing.type.startsWith("image/");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="row-2">
+        <div className="field">
+          <label>Estimate no.</label>
+          <input className="input mono" value={estimate.number} onChange={(e) => update({ number: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Status</label>
+          <select className="select" value={estimate.status || "draft"} onChange={(e) => update({ status: e.target.value })}>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+          </select>
+        </div>
+      </div>
+
+      {(clients || []).length > 0 && (
+        <div className="field">
+          <label>Fill from saved client (optional)</label>
+          <select
+            className="select"
+            value={estimate.clientId || ""}
+            onChange={(e) => fillFromClient(e.target.value)}>
+            <option value="">— Enter manually —</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="row-2">
+        <div className="field">
+          <label>Client name</label>
+          <input
+            className="input"
+            placeholder="Contact / client name"
+            value={estimate.clientName || ""}
+            onChange={(e) => update({ clientName: e.target.value, clientId: "" })}
+          />
+        </div>
+        <div className="field">
+          <label>Client company / corp</label>
+          <input
+            className="input"
+            placeholder="Corporation or business name"
+            value={estimate.clientCompany || ""}
+            onChange={(e) => update({ clientCompany: e.target.value, clientId: "" })}
+          />
+        </div>
+      </div>
+      <div className="field">
+        <label>Client address</label>
+        <input
+          className="input"
+          placeholder="Mailing address"
+          value={estimate.clientAddress || ""}
+          onChange={(e) => update({ clientAddress: e.target.value, clientId: "" })}
+        />
+      </div>
+      <div className="row-2">
+        <div className="field">
+          <label>Client email</label>
+          <input
+            className="input"
+            type="email"
+            value={estimate.clientEmail || ""}
+            onChange={(e) => update({ clientEmail: e.target.value, clientId: "" })}
+          />
+        </div>
+        <div className="field">
+          <label>Client phone</label>
+          <input
+            className="input"
+            value={estimate.clientPhone || ""}
+            onChange={(e) => update({ clientPhone: e.target.value, clientId: "" })}
+          />
+        </div>
+      </div>
+
+      <div className="row-2">
+        <div className="field">
+          <label>Issued</label>
+          <input className="input mono" type="date" value={estimate.date || ""} onChange={(e) => update({ date: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Valid until</label>
+          <input className="input mono" type="date" value={estimate.validUntil || ""} onChange={(e) => update({ validUntil: e.target.value })} />
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Job drawing</label>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          onChange={(e) => {
+            handleDrawing(e.target.files && e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
+        {drawing ? (
+          <div className="estimate-drawing-card" style={{ marginTop: 10 }}>
+            {isImage && drawing.dataUrl ? (
+              <img src={drawing.dataUrl} alt={drawing.name} style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 6 }} />
+            ) : (
+              <div className="help">{drawing.name}</div>
+            )}
+            <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => update({ drawing: null })}>
+              <Icon name="trash" size={12} /> Remove drawing
+            </button>
+          </div>
+        ) : (
+          <div className="help" style={{ marginTop: 6 }}>Upload a floor plan, sketch, or PDF drawing for this job.</div>
+        )}
+      </div>
+
+      <div>
+        <div className="line-items">
+          <span className="lbl">Work</span>
+          <span className="lbl" style={{ textAlign: "right" }}>Qty</span>
+          <span className="lbl" style={{ textAlign: "right" }}>Unit price</span>
+          <span className="lbl" style={{ textAlign: "right" }}>Total</span>
+          <span></span>
+          {(estimate.items || []).map((it, i) =>
+            <React.Fragment key={i}>
+              <input
+                className="input"
+                value={it.desc}
+                placeholder="Work description"
+                onChange={(e) => updateItem(i, { desc: e.target.value })}
+              />
+              <input
+                className="input mono"
+                type="number"
+                value={it.qty}
+                onChange={(e) => updateItem(i, { qty: Number(e.target.value) })}
+                style={{ textAlign: "right" }}
+              />
+              <input
+                className="input mono"
+                type="number"
+                step="0.01"
+                value={it.rate}
+                onChange={(e) => updateItem(i, { rate: Number(e.target.value) })}
+                style={{ textAlign: "right" }}
+              />
+              <span className="calc">{fmtMoney(Number(it.qty || 0) * Number(it.rate || 0))}</span>
+              <button className="iconbtn" onClick={() => removeItem(i)} title="Remove"><Icon name="close" size={12} /></button>
+            </React.Fragment>
+          )}
+        </div>
+        <button className="btn ghost sm" onClick={addItem} style={{ marginTop: 10 }}>
+          <Icon name="plus" size={12} /> Add row
+        </button>
+      </div>
+
+      <div className="row-2">
+        <div className="field">
+          <label>Tax rate (%)</label>
+          <input
+            className="input mono"
+            type="number"
+            step="0.01"
+            value={(estimate.taxRate || 0) * 100}
+            onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
+          />
+        </div>
+        <div className="field">
+          <label>Notes / terms</label>
+          <input
+            className="input"
+            value={estimate.notes || ""}
+            onChange={(e) => update({ notes: e.target.value })}
+            placeholder="Scope, exclusions, validity…"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EstimatesScreen({ state, dispatch, business, toast, params }) {
+  const [selected, setSelected] = useState2(params?.focusId || null);
+  const [mode, setMode] = useState2("preview");
+  const estimatePreviewRef = useRef(null);
+  const [drawingUrl, setDrawingUrl] = useState2("");
+
+  const estimates = state.estimates || [];
+  const est = estimates.find((e) => e.id === selected) || estimates[0] || null;
+
+  React.useEffect(() => {
+    let active = true;
+    const drawing = est?.drawing;
+    if (!drawing) {
+      setDrawingUrl("");
+      return;
+    }
+    if (drawing.dataUrl) {
+      setDrawingUrl(drawing.dataUrl);
+      return;
+    }
+    if (drawing.storagePath && window.MartenAPI?.isEnabled()) {
+      window.MartenAPI.getReceiptUrl(drawing.storagePath).
+        then((u) => { if (active) setDrawingUrl(u); }).
+        catch(() => { if (active) setDrawingUrl(""); });
+    } else {
+      setDrawingUrl("");
+    }
+    return () => { active = false; };
+  }, [est?.id, est?.drawing?.dataUrl, est?.drawing?.storagePath]);
+
+  const previewEstimate = est
+    ? {
+        ...est,
+        drawing: est.drawing
+          ? { ...est.drawing, dataUrl: est.drawing.dataUrl || (est.drawing.type?.startsWith?.("image/") ? drawingUrl : undefined), url: drawingUrl || undefined }
+          : null,
+      }
+    : null;
+
+  const runEstimatePdfDownload = async () => {
+    if (mode !== "preview") {
+      setMode("preview");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+    const start = Date.now();
+    while (!estimatePreviewRef.current && Date.now() - start < 15000) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!estimatePreviewRef.current) throw new Error("Estimate preview not ready.");
+    await window.downloadEstimatePdf({ estimate: previewEstimate || est, element: estimatePreviewRef.current });
+    toast("Estimate PDF downloaded.");
+  };
+
+  const downloadCurrentEstimatePdf = async () => {
+    if (!est) {
+      toast("Select an estimate first.");
+      return;
+    }
+    if (!(est.clientName || "").trim()) {
+      toast("Add a client name before downloading.");
+      return;
+    }
+    try {
+      await runEstimatePdfDownload();
+    } catch (error) {
+      toast(error?.message || "Could not download estimate PDF.");
+      console.error(error);
+    }
+  };
+
+  const createNew = () => {
+    const num = "EST-" + String(1 + estimates.filter((e) => (e.number || "").startsWith("EST-")).length).padStart(4, "0");
+    const today = new Date();
+    const valid = new Date(today.getTime() + 30 * 86400000);
+    const newEst = {
+      id: "est" + Date.now(),
+      number: num,
+      clientId: "",
+      clientName: "",
+      clientCompany: "",
+      clientAddress: "",
+      clientEmail: "",
+      clientPhone: "",
+      date: today.toISOString().slice(0, 10),
+      validUntil: valid.toISOString().slice(0, 10),
+      status: "draft",
+      items: [{ desc: "New work item", sub: "", qty: 1, rate: 0 }],
+      taxRate: 0,
+      notes: "",
+      drawing: null,
+      createdAt: new Date().toISOString(),
+    };
+    dispatch({ type: "ADD_ESTIMATE", estimate: newEst });
+    setSelected(newEst.id);
+    setMode("edit");
+  };
+
+  if (!estimates.length) {
+    return (
+      <>
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              0 estimates
+            </span>
+          </div>
+          <div className="right">
+            <button className="btn primary" onClick={createNew}>
+              <Icon name="plus" size={13} /> New estimate
+            </button>
+          </div>
+        </div>
+        <div className="empty" style={{ marginTop: 24 }}>
+          No estimates yet. Create a job estimate with client details, a drawing, and line-item pricing.
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="doc-screen">
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              {estimates.length} estimates
+            </span>
+          </div>
+          <div className="right">
+            <div className="doc-toolbar-actions">
+              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+                <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
+                  onClick={() => setMode("preview")}
+                  style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Preview
+                </button>
+                <button className={"btn sm " + (mode === "edit" ? "" : "ghost")}
+                  onClick={() => setMode("edit")}
+                  style={mode === "edit" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Edit
+                </button>
+              </div>
+              <button className="btn primary" onClick={downloadCurrentEstimatePdf}>
+                <Icon name="download" size={13} /> Download PDF
+              </button>
+            </div>
+            <button className="btn primary" onClick={createNew} style={{ marginLeft: 6 }}>
+              <Icon name="plus" size={13} /> New estimate
+            </button>
+          </div>
+        </div>
+
+        <div className="two-col doc-two-col" style={{ fontFamily: "Arial" }}>
+          <div className="list-card doc-controls-col">
+            {estimates.map((e) => {
+              const total = (e.items || []).reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0) * (1 + (e.taxRate || 0));
+              const label = e.clientCompany || e.clientName || "Untitled estimate";
+              return (
+                <div key={e.id} className={"row " + (e.id === (selected || est?.id) ? "active" : "")} onClick={() => setSelected(e.id)}>
+                  <span className="name" style={{ fontFamily: "Arial" }}>{label}</span>
+                  <span className="amount">{fmtMoney(total)}</span>
+                  <span className="meta">{e.number} · {fmtDate(e.date)}</span>
+                  <select
+                    className={"status status-select " + (e.status || "draft")}
+                    value={e.status || "draft"}
+                    onClick={(ev) => ev.stopPropagation()}
+                    onChange={(ev) => {
+                      dispatch({ type: "UPDATE_ESTIMATE", estimate: { ...e, status: ev.target.value } });
+                      toast(`${e.number} → ${ev.target.value}`);
+                    }}>
+                    <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="declined">Declined</option>
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="doc-preview-col">
+            <div className="doc-preview-actions mobile-doc-actions">
+              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+                <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
+                  onClick={() => setMode("preview")}
+                  style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Preview
+                </button>
+                <button className={"btn sm " + (mode === "edit" ? "" : "ghost")}
+                  onClick={() => setMode("edit")}
+                  style={mode === "edit" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
+                  Edit
+                </button>
+              </div>
+              <button className="btn primary" onClick={downloadCurrentEstimatePdf}>
+                <Icon name="download" size={13} /> Download PDF
+              </button>
+            </div>
+
+            <div
+              ref={estimatePreviewRef}
+              className={"doc-pdf-letter " + (mode === "edit" ? "doc-pdf-letter--capture-only" : "")}
+            >
+              {previewEstimate && <EstimateDocument estimate={previewEstimate} business={business} />}
+            </div>
+
+            {mode === "edit" && est ? (
+              <div style={{ border: "1px solid var(--rule)", borderRadius: "var(--r-md)", padding: 24, background: "var(--paper)", marginTop: 16 }}>
+                <EstimateEditor
+                  estimate={est}
+                  clients={state.clients}
+                  onChange={(patched) => dispatch({ type: "UPDATE_ESTIMATE", estimate: patched })}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+window.EstimatesScreen = EstimatesScreen;
+
 /* ---------- Bills ---------- */
 function readAmountFromText(rawText) {
   if (!rawText) return null;

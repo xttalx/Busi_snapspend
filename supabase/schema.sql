@@ -57,6 +57,13 @@ create table if not exists recurring_expenses (
   created_at timestamptz not null default now()
 );
 
+create table if not exists estimates (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  data jsonb not null,
+  created_at timestamptz not null default now()
+);
+
 alter table business_profiles enable row level security;
 alter table expenses enable row level security;
 alter table clients enable row level security;
@@ -65,6 +72,7 @@ alter table bills enable row level security;
 alter table employees enable row level security;
 alter table paystubs enable row level security;
 alter table recurring_expenses enable row level security;
+alter table estimates enable row level security;
 
 -- Policies (drop first so this script is safe to re-run)
 drop policy if exists "business_profiles_own" on business_profiles;
@@ -97,6 +105,10 @@ create policy "paystubs_own" on paystubs
 
 drop policy if exists "recurring_expenses_own" on recurring_expenses;
 create policy "recurring_expenses_own" on recurring_expenses
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "estimates_own" on estimates;
+create policy "estimates_own" on estimates
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Receipt uploads (Storage → New bucket → name: receipts, private)

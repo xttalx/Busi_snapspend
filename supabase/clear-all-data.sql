@@ -1,6 +1,7 @@
 -- Wipe ALL user data from Supabase (run once to remove old demo records).
 -- Does not delete auth users. To remove users: Authentication → Users.
 
+delete from estimates;
 delete from recurring_expenses;
 delete from expenses;
 delete from clients;
