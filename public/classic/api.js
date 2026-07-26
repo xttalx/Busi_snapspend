@@ -120,13 +120,147 @@
 
   async function ensureBusinessProfile(userId, profileResult) {
     if (profileResult.data?.profile) {
-      return { ...DEFAULT_USER_BUSINESS, ...profileResult.data.profile };
+      const profile = { ...DEFAULT_USER_BUSINESS, ...profileResult.data.profile };
+      delete profile.__estimates;
+      return profile;
     }
     await sb().from("business_profiles").upsert({
       user_id: userId,
       profile: DEFAULT_USER_BUSINESS,
     });
-    return DEFAULT_USER_BUSINESS;
+    return { ...DEFAULT_USER_BUSINESS };
+  }
+
+  function estimatesLocalKey(userId) {
+    return `marten_estimates_${userId || "local"}`;
+  }
+
+  function readEstimatesLocal(userId) {
+    try {
+      const raw = localStorage.getItem(estimatesLocalKey(userId));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  function writeEstimatesLocal(userId, estimates) {
+    try {
+      localStorage.setItem(estimatesLocalKey(userId), JSON.stringify(estimates || []));
+    } catch (err) {
+      console.warn("Could not cache estimates locally:", err);
+    }
+  }
+
+  function stripEstimateForCloud(estimate) {
+    const payload = { ...estimate };
+    if (payload.drawing?.storagePath) {
+      const { dataUrl, ...drawing } = payload.drawing;
+      payload.drawing = drawing;
+    }
+    return payload;
+  }
+
+  function mergeEstimateList(list, estimate) {
+    const next = (list || []).map((e) => (e.id === estimate.id ? estimate : e));
+    if (!next.some((e) => e.id === estimate.id)) next.unshift(estimate);
+    return next;
+  }
+
+  async function persistEstimatesToProfile(userId, estimates) {
+    const cloudList = (estimates || []).map(stripEstimateForCloud);
+    const { data, error: readError } = await sb()
+      .from("business_profiles")
+      .select("profile")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (readError) throw readError;
+    const current = data?.profile || { ...DEFAULT_USER_BUSINESS };
+    const profile = { ...current, __estimates: cloudList };
+    const { error } = await sb().from("business_profiles").upsert({
+      user_id: userId,
+      profile,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+  }
+
+  async function fetchEstimates(userId, profileRaw) {
+    const fromProfile = Array.isArray(profileRaw?.__estimates) ? profileRaw.__estimates : [];
+    const fromLocal = readEstimatesLocal(userId);
+    let fromTable = [];
+    let tableOk = false;
+    try {
+      fromTable = await fetchTable("estimates", userId);
+      tableOk = true;
+    } catch (error) {
+      console.warn("estimates table not found yet; using profile/local backup. Run supabase/estimates.sql.");
+    }
+
+    let estimates = [];
+    if (tableOk && fromTable.length) estimates = fromTable;
+    else if (fromProfile.length) estimates = fromProfile;
+    else estimates = fromLocal;
+
+    writeEstimatesLocal(userId, estimates);
+
+    // If the table exists but is empty while backups have data, migrate up.
+    if (tableOk && !fromTable.length && estimates.length) {
+      for (const estimate of estimates) {
+        try {
+          await upsertEntity("estimates", userId, stripEstimateForCloud(estimate));
+        } catch (_e) {
+          /* ignore per-row migrate failures */
+        }
+      }
+    }
+
+    return estimates;
+  }
+
+  async function saveEstimate(userId, estimate, allEstimates) {
+    let payload = { ...estimate };
+    if (payload.drawing?.dataUrl && !payload.drawing.storagePath) {
+      try {
+        payload = {
+          ...payload,
+          drawing: await uploadReceipt(userId, `estimate-${estimate.id}`, payload.drawing),
+        };
+      } catch (err) {
+        console.warn("Estimate drawing upload failed; keeping local data URL.", err);
+      }
+    }
+
+    const list = mergeEstimateList(allEstimates, payload);
+    writeEstimatesLocal(userId, list);
+
+    try {
+      await upsertEntity("estimates", userId, stripEstimateForCloud(payload));
+    } catch (err) {
+      console.warn("Estimate table sync failed; saved to profile backup.", err);
+    }
+
+    try {
+      await persistEstimatesToProfile(userId, list);
+    } catch (err) {
+      console.error("Estimate profile backup failed:", err);
+      throw err;
+    }
+
+    return payload;
+  }
+
+  async function removeEstimate(userId, id, allEstimates) {
+    const list = (allEstimates || []).filter((e) => e.id !== id);
+    writeEstimatesLocal(userId, list);
+    try {
+      await deleteEntity("estimates", id);
+    } catch (err) {
+      console.warn("Estimate table delete failed; updating profile backup.", err);
+    }
+    await persistEstimatesToProfile(userId, list);
   }
 
   async function fetchTableSafe(table, userId) {
@@ -188,32 +322,21 @@
     return template;
   }
 
-  async function saveEstimate(userId, estimate) {
-    let payload = { ...estimate };
-    if (payload.drawing?.dataUrl && !payload.drawing.storagePath) {
-      payload = {
-        ...payload,
-        drawing: await uploadReceipt(userId, `estimate-${estimate.id}`, payload.drawing),
-      };
-    }
-    await upsertEntity("estimates", userId, payload);
-    return payload;
-  }
-
   async function fetchAllData(userId) {
-    const [expenses, bills, clients, invoices, employees, paystubs, estimates, recurringExpenses, profileResult] = await Promise.all([
+    const [expenses, bills, clients, invoices, employees, paystubs, recurringExpenses, profileResult] = await Promise.all([
       fetchTable("expenses", userId),
       fetchTableSafe("bills", userId),
       fetchTable("clients", userId),
       fetchTable("invoices", userId),
       fetchTable("employees", userId),
       fetchTable("paystubs", userId),
-      fetchTableSafe("estimates", userId),
       fetchTableSafe("recurring_expenses", userId),
       sb().from("business_profiles").select("profile").eq("user_id", userId).maybeSingle(),
     ]);
 
+    const profileRaw = profileResult.data?.profile || null;
     const userBusiness = await ensureBusinessProfile(userId, profileResult);
+    const estimates = await fetchEstimates(userId, profileRaw);
     const { generated, updatedTemplates } = applyDueRecurring(recurringExpenses);
     const mergedRecurring = recurringExpenses.map((t) => {
       const u = updatedTemplates.find((x) => x.id === t.id);
@@ -257,11 +380,13 @@
         await upsertEntity("invoices", userId, action.invoice);
         break;
       case "ADD_ESTIMATE":
-      case "UPDATE_ESTIMATE":
-        await saveEstimate(userId, action.estimate);
-        break;
+      case "UPDATE_ESTIMATE": {
+        const list = state?.estimates || [];
+        const saved = await saveEstimate(userId, action.estimate, list);
+        return { syncEstimate: saved };
+      }
       case "REMOVE_ESTIMATE":
-        await deleteEntity("estimates", action.id);
+        await removeEstimate(userId, action.id, state?.estimates || []);
         break;
       case "ADD_BILL":
       case "UPDATE_BILL":
@@ -288,7 +413,16 @@
         await deleteEntity("clients", action.id);
         break;
       case "UPDATE_USER_BUSINESS": {
-        const profile = state?.userBusiness || action.profile;
+        const { data } = await sb()
+          .from("business_profiles")
+          .select("profile")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const existingEstimates = Array.isArray(data?.profile?.__estimates)
+          ? data.profile.__estimates
+          : (state?.estimates || []).map(stripEstimateForCloud);
+        const base = state?.userBusiness || action.profile || {};
+        const profile = { ...base, __estimates: existingEstimates };
         const { error } = await sb().from("business_profiles").upsert({
           user_id: userId,
           profile,
@@ -305,10 +439,28 @@
   function createPersistDispatch(dispatch, getState, userId) {
     return (action) => {
       dispatch(action);
-      if (!isEnabled() || !userId) return;
-      persistAction(userId, action, getState()).catch((err) => {
-        console.error("Marten Bookkeeping sync failed:", err);
-      });
+      if (!isEnabled() || !userId || action.__skipPersist) return;
+      persistAction(userId, action, getState())
+        .then((result) => {
+          if (result?.syncEstimate) {
+            const current = (getState().estimates || []).find((e) => e.id === result.syncEstimate.id);
+            const savedDrawing = result.syncEstimate.drawing;
+            const needsDrawingSync =
+              savedDrawing?.storagePath &&
+              current?.drawing &&
+              !current.drawing.storagePath;
+            if (needsDrawingSync) {
+              dispatch({
+                type: "UPDATE_ESTIMATE",
+                estimate: result.syncEstimate,
+                __skipPersist: true,
+              });
+            }
+          }
+        })
+        .catch((err) => {
+          console.error("Marten Bookkeeping sync failed:", err);
+        });
     };
   }
 
