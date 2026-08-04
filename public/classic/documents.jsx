@@ -330,9 +330,13 @@ function PaystubDocument({ stub, employee, business }) {
 
 function EstimateDocument({ estimate, business }) {
   const items = estimate.items || [];
+  const taxRate = Number(estimate.taxRate) || 0;
   const subtotal = items.reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
-  const tax = subtotal * (estimate.taxRate || 0);
-  const total = subtotal + tax;
+  const gst = subtotal * taxRate;
+  const total = subtotal + gst;
+  const taxLabel =
+    (window.SEED?.COUNTRY_TAX_RATES && business?.country && window.SEED.COUNTRY_TAX_RATES[business.country]?.label) ||
+    "GST";
   const drawing = estimate.drawing;
   const drawingSrc = drawing?.dataUrl || drawing?.url || null;
   const isDrawingImage = drawing && (
@@ -426,10 +430,11 @@ function EstimateDocument({ estimate, business }) {
         <div className="totals">
           <div className="stack">
             <div className="row"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
-            {estimate.taxRate > 0 &&
-              <div className="row"><span>Tax · {(estimate.taxRate * 100).toFixed(2)}%</span><span>{fmtMoney(tax)}</span></div>
-            }
-            <div className="row grand"><span>Estimate total</span><span className="v">{fmtMoney(total)}</span></div>
+            <div className="row">
+              <span>{taxLabel} · {(taxRate * 100).toFixed(2)}%</span>
+              <span>{fmtMoney(gst)}</span>
+            </div>
+            <div className="row grand"><span>Estimate total (incl. {taxLabel})</span><span className="v">{fmtMoney(total)}</span></div>
           </div>
         </div>
 

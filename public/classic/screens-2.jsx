@@ -621,14 +621,15 @@ function EstimateEditor({ estimate, clients, onChange }) {
 
       <div className="row-2">
         <div className="field">
-          <label>Tax rate (%)</label>
+          <label>GST (%)</label>
           <input
             className="input mono"
             type="number"
             step="0.01"
-            value={(estimate.taxRate || 0) * 100}
+            value={+((estimate.taxRate || 0) * 100).toFixed(3)}
             onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
           />
+          <span className="help">Sales tax / GST applied to the estimate total.</span>
         </div>
         <div className="field">
           <label>Notes / terms</label>
@@ -731,7 +732,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
       validUntil: valid.toISOString().slice(0, 10),
       status: "draft",
       items: [{ desc: "New work item", sub: "", qty: 1, rate: 0 }],
-      taxRate: 0,
+      taxRate: Number(business?.taxRate) >= 0 ? Number(business.taxRate) : 0.05,
       notes: "",
       drawing: null,
       createdAt: new Date().toISOString(),
