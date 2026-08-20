@@ -149,12 +149,237 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAu
 
 }
 
+function roundMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function InvoiceGstCalculator({ open, onClose, defaultRate, onApplyRate }) {
+  const [mode, setMode] = useState2("add");
+  const [amount, setAmount] = useState2("");
+  const [ratePct, setRatePct] = useState2(((defaultRate || 0) * 100).toFixed(2));
+
+  React.useEffect(() => {
+    if (open) {
+      setAmount("");
+      setRatePct(((defaultRate || 0) * 100).toFixed(2));
+    }
+  }, [open, defaultRate]);
+
+  if (!open) return null;
+
+  const rate = Math.max(0, Number(ratePct) || 0) / 100;
+  const input = Number(amount);
+  const valid = amount !== "" && !Number.isNaN(input) && input >= 0;
+  let net = 0, gst = 0, total = 0;
+  if (valid) {
+    if (mode === "add") {
+      net = roundMoney(input);
+      gst = roundMoney(net * rate);
+      total = roundMoney(net + gst);
+    } else {
+      total = roundMoney(input);
+      net = rate > 0 ? roundMoney(total / (1 + rate)) : total;
+      gst = roundMoney(total - net);
+    }
+  }
+
+  return (
+    <>
+      <div className="drawer-scrim" onClick={onClose}></div>
+      <div className="drawer">
+        <div className="head">
+          <div>
+            <div className="kicker">Invoice tools</div>
+            <h3>GST calculator</h3>
+          </div>
+          <button className="iconbtn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+        </div>
+        <div className="body">
+          <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+            <button
+              className={"btn sm " + (mode === "add" ? "" : "ghost")}
+              style={mode === "add" ? { background: "var(--paper)", borderColor: "var(--rule)", flex: 1 } : { border: "none", flex: 1 }}
+              onClick={() => setMode("add")}>
+              Add GST
+            </button>
+            <button
+              className={"btn sm " + (mode === "extract" ? "" : "ghost")}
+              style={mode === "extract" ? { background: "var(--paper)", borderColor: "var(--rule)", flex: 1 } : { border: "none", flex: 1 }}
+              onClick={() => setMode("extract")}>
+              GST from amount
+            </button>
+          </div>
+          <p className="help">
+            {mode === "add"
+              ? "Enter a pre-tax amount. We add GST to get the invoice total."
+              : "Enter a GST-inclusive amount. We pull out the GST and net."}
+          </p>
+          <div className="row-2">
+            <div className="field">
+              <label>{mode === "add" ? "Amount (before GST)" : "Amount (includes GST)"}</label>
+              <input
+                className="input mono"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label>GST (%)</label>
+              <input
+                className="input mono"
+                type="number"
+                step="0.01"
+                min="0"
+                value={ratePct}
+                onChange={(e) => setRatePct(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="gst-calc-results">
+            <div className="gst-calc-row"><span>Net (before GST)</span><b>{valid ? fmtMoney(net) : "—"}</b></div>
+            <div className="gst-calc-row"><span>GST</span><b>{valid ? fmtMoney(gst) : "—"}</b></div>
+            <div className="gst-calc-row grand"><span>Total</span><b>{valid ? fmtMoney(total) : "—"}</b></div>
+          </div>
+        </div>
+        <div className="foot">
+          <button className="btn ghost" onClick={onClose}>Close</button>
+          <button
+            className="btn primary"
+            onClick={() => {
+              onApplyRate(rate);
+              onClose();
+            }}>
+            Use this GST rate
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MailInvoiceModal({ open, onClose, invoice, client, business, previewRef, toast, setMode }) {
+  const [to, setTo] = useState2("");
+  const [subject, setSubject] = useState2("");
+  const [message, setMessage] = useState2("");
+  const [busy, setBusy] = useState2(false);
+
+  React.useEffect(() => {
+    if (!open || !invoice) return;
+    const name = client?.name || "there";
+    const biz = business?.name || "our studio";
+    setTo(client?.email || "");
+    setSubject(`${invoice.number || "Invoice"} from ${biz}`);
+    setMessage(
+      `Hi ${name},\n\nPlease find invoice ${invoice.number || ""} attached.\n\nThank you,\n${biz}`
+    );
+    setBusy(false);
+  }, [open, invoice?.id, client?.email, client?.name, business?.name]);
+
+  if (!open) return null;
+
+  const openMailtoFallback = () => {
+    const mailto = `mailto:${encodeURIComponent(to.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message + "\n\n(Attach the downloaded PDF before sending.)")}`;
+    window.location.href = mailto;
+  };
+
+  const send = async () => {
+    if (!to.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(to.trim())) {
+      toast("Enter a valid recipient email.");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (setMode) {
+        setMode("preview");
+        await new Promise((r) => setTimeout(r, 80));
+      }
+      const start = Date.now();
+      while (!previewRef.current && Date.now() - start < 15000) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (!previewRef.current) throw new Error("Invoice preview not ready.");
+      const pdfBase64 = await window.invoicePdfBase64FromElement(previewRef.current, { fast: true });
+      if (!pdfBase64) throw new Error("Could not build the invoice PDF.");
+
+      if (window.MartenBilling?.sendInvoiceEmail) {
+        try {
+          await window.MartenBilling.sendInvoiceEmail({
+            to: to.trim(),
+            subject,
+            message,
+            filename: `${invoice.number || "invoice"}.pdf`,
+            pdfBase64,
+            invoiceNumber: invoice.number,
+          });
+          toast(`Invoice emailed to ${to.trim()}.`);
+          onClose();
+          return;
+        } catch (err) {
+          if (!err?.fallback) throw err;
+        }
+      }
+
+      await window.downloadInvoicePdf({ invoice, element: previewRef.current, fast: true });
+      openMailtoFallback();
+      toast("PDF downloaded — attach it in your email app.");
+      onClose();
+    } catch (error) {
+      toast(error?.message || "Could not email this invoice.");
+      console.error(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="modal-scrim" onClick={busy ? undefined : onClose}></div>
+      <div className="modal" style={{ width: "min(520px, calc(100vw - 32px))" }}>
+        <div className="modal-head">
+          <div>
+            <div className="kicker">Send invoice</div>
+            <h3>Email {invoice?.number || "invoice"}</h3>
+            <p className="modal-sub">Sends a PDF copy to your client. If server mail is not set up, we open your email app instead.</p>
+          </div>
+          <button className="iconbtn" onClick={onClose} disabled={busy} aria-label="Close"><Icon name="close" /></button>
+        </div>
+        <div className="modal-body" style={{ padding: "18px 28px 8px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="field">
+            <label>To</label>
+            <input className="input" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="client@studio.com" />
+          </div>
+          <div className="field">
+            <label>Subject</label>
+            <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Message</label>
+            <textarea className="textarea" rows={6} value={message} onChange={(e) => setMessage(e.target.value)} />
+          </div>
+        </div>
+        <div className="modal-foot" style={{ padding: "12px 28px 20px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn primary" onClick={send} disabled={busy}>
+            <Icon name="send" size={13} /> {busy ? "Sending…" : "Send invoice"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function InvoicesScreen({ state, dispatch, business, toast, params, billingStatus, refreshBilling }) {
   const [selected, setSelected] = useState2(params?.focusId || null);
   const [mode, setMode] = useState2("preview"); // edit | preview
   const invoicePreviewRef = useRef(null);
   const [paywall, setPaywall] = useState2({ open: false, checkoutUrl: null });
   const [paywallBusy, setPaywallBusy] = useState2(false);
+  const [calcOpen, setCalcOpen] = useState2(false);
+  const [mailOpen, setMailOpen] = useState2(false);
 
   const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
   const client = inv ? state.clients.find((c) => c.id === inv.clientId) : null;
@@ -285,6 +510,9 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
             </span>
           </div>
           <div className="right">
+            <button className="btn ghost" onClick={() => setCalcOpen(true)}>
+              <Icon name="calc" size={13} /> GST calculator
+            </button>
             <button className="btn primary" onClick={createNew}>
               <Icon name="plus" size={13} /> New invoice
             </button>
@@ -293,6 +521,12 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
         <div className="empty" style={{ marginTop: 24 }}>
           No invoices yet. Add a client under Business Clients, then create your first invoice.
         </div>
+        <InvoiceGstCalculator
+          open={calcOpen}
+          onClose={() => setCalcOpen(false)}
+          defaultRate={business?.taxRate || 0}
+          onApplyRate={() => toast("Create an invoice first, then apply the GST rate in Edit.")}
+        />
       </>
     );
   }
@@ -320,6 +554,12 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
                   Edit
                 </button>
               </div>
+              <button className="btn" onClick={() => setCalcOpen(true)}>
+                <Icon name="calc" size={13} /> GST
+              </button>
+              <button className="btn" onClick={() => setMailOpen(true)}>
+                <Icon name="send" size={13} /> Email
+              </button>
               <button className="btn primary" onClick={downloadCurrentInvoicePdf}>
                 <Icon name="download" size={13} /> Download PDF
               </button>
@@ -373,6 +613,12 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
                   Edit
                 </button>
               </div>
+              <button className="btn" onClick={() => setCalcOpen(true)}>
+                <Icon name="calc" size={13} /> GST
+              </button>
+              <button className="btn" onClick={() => setMailOpen(true)}>
+                <Icon name="send" size={13} /> Email
+              </button>
               <button className="btn primary" onClick={downloadCurrentInvoicePdf}>
                 <Icon name="download" size={13} /> Download PDF
               </button>
@@ -410,6 +656,26 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
           setPaywallBusy(true);
           window.location.href = paywall.checkoutUrl;
         }}
+      />
+      <InvoiceGstCalculator
+        open={calcOpen}
+        onClose={() => setCalcOpen(false)}
+        defaultRate={inv?.taxRate || business?.taxRate || 0}
+        onApplyRate={(rate) => {
+          if (!inv) return;
+          dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, { ...inv, taxRate: rate }) });
+          toast(`GST set to ${(rate * 100).toFixed(2)}% on ${inv.number}`);
+        }}
+      />
+      <MailInvoiceModal
+        open={mailOpen}
+        onClose={() => setMailOpen(false)}
+        invoice={inv}
+        client={client}
+        business={business}
+        previewRef={invoicePreviewRef}
+        toast={toast}
+        setMode={setMode}
       />
     </>);
 

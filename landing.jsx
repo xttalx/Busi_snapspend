@@ -10,7 +10,12 @@ function LandingPage({ setupRequired = false }) {
     {
       icon: "invoice",
       title: "Client invoices",
-      desc: "Build polished invoices with line items, tax, and your studio branding — track sent, due, and paid.",
+      desc: "Build polished invoices with line items, GST, and your studio branding — then email the PDF to your client.",
+    },
+    {
+      icon: "calc",
+      title: "GST calculator",
+      desc: "Add GST to a pre-tax amount, or extract GST from a tax-inclusive total and apply the rate to an invoice.",
     },
     {
       icon: "paystub",
@@ -36,7 +41,7 @@ function LandingPage({ setupRequired = false }) {
 
   const highlights = [
     "Receipts & categories",
-    "Invoices & bills",
+    "Invoices, GST & email",
     "Payroll & paystubs",
     "Cloud-backed workspace",
   ];
@@ -47,19 +52,19 @@ function LandingPage({ setupRequired = false }) {
         <div className="landing-brand">
           <BrandLogo size={44} showName name={brand} />
         </div>
-        <p className="landing-eyebrow">Expense · invoice · payroll for the solo studio</p>
+        <p className="landing-eyebrow">Invoice generator · GST calculator · expense &amp; payroll</p>
       </header>
 
       <div className="landing-hero-grid">
         <section className="landing-copy">
           <p className="landing-kicker">Built for independent studios</p>
           <h1 className="landing-headline">
-            Your books, invoices, and payroll — in one calm workspace.
+            Invoice generator, GST calculator, and bookkeeping — in one calm workspace.
           </h1>
           <p className="landing-lead">
             {brand} is a focused financial desk for freelancers and small creative businesses.
-            Track what you spend, bill who you work with, pay your team, and keep everything
-            organized without enterprise accounting software.
+            Create invoices, calculate GST from a total or add GST to an amount, email invoices to clients,
+            track expenses, and run payroll without enterprise accounting software.
           </p>
 
           <ul className="landing-highlights">
@@ -137,6 +142,27 @@ function LandingPage({ setupRequired = false }) {
         >
           Get started
         </button>
+      </section>
+
+      <section className="landing-features" aria-labelledby="landing-faq-heading" style={{ paddingTop: 8 }}>
+        <div className="landing-features-head">
+          <p className="landing-kicker">FAQ</p>
+          <h2 id="landing-faq-heading">Invoice and GST questions</h2>
+        </div>
+        <div className="landing-feature-grid">
+          <article className="landing-feature-card">
+            <h3>How do I calculate GST on an invoice?</h3>
+            <p>Open Invoices, tap GST, then choose Add GST for a pre-tax amount or GST from amount for a tax-inclusive total. Apply the rate to the current invoice in one click.</p>
+          </article>
+          <article className="landing-feature-card">
+            <h3>Can I email an invoice from the app?</h3>
+            <p>Yes. Open any invoice and tap Email. We attach the PDF and send it to your client. If server mail is not configured, your email app opens with the PDF downloaded to attach.</p>
+          </article>
+          <article className="landing-feature-card">
+            <h3>Is this bookkeeping software for freelancers?</h3>
+            <p>Yes. Marten Bookkeeping is built for solo studios: expenses, invoices, estimates, bills, payroll, and reports in one login.</p>
+          </article>
+        </div>
       </section>
 
       <footer className="landing-footer">

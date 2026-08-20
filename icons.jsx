@@ -18,6 +18,7 @@ const ICONS = {
   download:  <><path d="M8 2v8M4 7l4 4 4-4"/><path d="M2 13h12"/></>,
   print:     <><path d="M4 2h8v4H4z"/><path d="M2 6h12v6H10v2H6v-2H2z"/><path d="M6 9h4"/></>,
   send:      <><path d="M14 2L7 9"/><path d="M14 2L9 14l-2-5-5-2z"/></>,
+  calc:      <><path d="M3 2h10v12H3z"/><path d="M5 5h6M5 8h2M9 8h2M5 11h2M9 11h2"/></>,
   filter:    <><path d="M2 3h12l-4 6v5l-4-2V9z"/></>,
   edit:      <><path d="M2 14l1-3 8-8 2 2-8 8z"/><path d="M9 4l2 2"/></>,
   trash:     <><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.5 9h6l.5-9"/></>,

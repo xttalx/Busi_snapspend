@@ -73,7 +73,7 @@ async function rasterizeDocShell(shell, { fast = false } = {}) {
   });
 }
 
-function canvasToLetterPdf(canvas, fileName, { fast = false } = {}) {
+function canvasToLetterPdfDoc(canvas, { fast = false } = {}) {
   if (!window.jspdf?.jsPDF) {
     throw new Error("PDF libraries missing. Refresh once and try again.");
   }
@@ -97,7 +97,11 @@ function canvasToLetterPdf(canvas, fileName, { fast = false } = {}) {
     page += 1;
   }
 
-  pdf.save(fileName);
+  return pdf;
+}
+
+function canvasToLetterPdf(canvas, fileName, { fast = false } = {}) {
+  canvasToLetterPdfDoc(canvas, { fast }).save(fileName);
 }
 
 /** Capture the on-screen preview node exactly as rendered (WYSIWYG). */
@@ -119,6 +123,31 @@ async function downloadPreviewPdfFromElement(element, fileName, { fast = false }
   try {
     const canvas = await rasterizeDocShell(shell, { fast });
     canvasToLetterPdf(canvas, fileName, { fast });
+  } finally {
+    shell.classList.remove("pdf-capture-snapshot");
+  }
+}
+
+async function invoicePdfBase64FromElement(element, { fast = true } = {}) {
+  const shell = pdfCaptureTarget(element);
+  if (!shell) {
+    throw new Error("Preview document not found.");
+  }
+
+  const scrollTarget =
+    element.closest?.(".invoice-lite-preview-slot, .invoice-lite-preview, .doc-pdf-letter, .doc-preview-col") ||
+    shell;
+  scrollTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+
+  shell.classList.add("pdf-capture-snapshot");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  if (!fast) await new Promise((r) => setTimeout(r, 50));
+
+  try {
+    const canvas = await rasterizeDocShell(shell, { fast });
+    const pdf = canvasToLetterPdfDoc(canvas, { fast });
+    const dataUri = pdf.output("datauristring");
+    return (dataUri.split(",")[1] || "").trim();
   } finally {
     shell.classList.remove("pdf-capture-snapshot");
   }
@@ -455,3 +484,4 @@ window.EstimateDocument = EstimateDocument;
 window.downloadInvoicePdf = downloadInvoicePdf;
 window.downloadPaystubPdf = downloadPaystubPdf;
 window.downloadEstimatePdf = downloadEstimatePdf;
+window.invoicePdfBase64FromElement = invoicePdfBase64FromElement;

@@ -138,6 +138,27 @@
 
     isValidEmail,
 
+    async sendInvoiceEmail({ to, subject, message, filename, pdfBase64, invoiceNumber }) {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Not signed in.");
+      const res = await fetch("/api/invoices/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ to, subject, message, filename, pdfBase64, invoiceNumber }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 501 || json.fallback) {
+        const err = new Error(json.error || "Email delivery is not configured.");
+        err.fallback = true;
+        throw err;
+      }
+      if (!res.ok) throw new Error(json.error || "Could not send invoice email.");
+      return json;
+    },
+
     /** Block checkout until invoice form is complete and emails are valid. */
     validateInvoiceCheckout({ business, client, invoice, requireCheckoutEmail = false }) {
       const issues = [];

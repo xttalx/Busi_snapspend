@@ -2,13 +2,55 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://martenbooks.com").replace(/\/$/, "");
+const title = "Marten Bookkeeping | Invoice, GST calculator, expenses & payroll";
+const description =
+  "Free small-business bookkeeping for freelancers and studios. Create invoices, calculate GST, email invoices to clients, track expenses, and run payroll in one workspace.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Marten Bookkeeping · Expense, invoice & payroll",
-  description:
-    "Expense, invoice, and payroll for the solo studio. Log spending, send invoices, and run pay statements.",
+  title: {
+    default: title,
+    template: "%s · Marten Bookkeeping",
+  },
+  description,
   applicationName: "Marten Bookkeeping",
+  keywords: [
+    "invoice generator",
+    "GST calculator",
+    "email invoice",
+    "small business bookkeeping",
+    "freelance invoicing",
+    "expense tracker",
+    "payroll software",
+    "paystubs",
+    "job estimates",
+    "Canada GST invoice",
+  ],
+  authors: [{ name: "Marten Bookkeeping", url: siteUrl }],
+  creator: "Marten Bookkeeping",
+  publisher: "Marten Bookkeeping",
+  category: "finance",
+  alternates: { canonical: "/" },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
+  openGraph: {
+    type: "website",
+    url: siteUrl,
+    siteName: "Marten Bookkeeping",
+    title,
+    description,
+    locale: "en_CA",
+    images: [{ url: "/icons/icon-512.png", width: 512, height: 512, alt: "Marten Bookkeeping" }],
+  },
+  twitter: {
+    card: "summary",
+    title,
+    description,
+    images: ["/icons/icon-512.png"],
+  },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

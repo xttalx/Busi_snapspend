@@ -776,6 +776,31 @@ body {
 .recurring-card-main { flex: 1; min-width: 0; }
 .recurring-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
+.gst-calc-results {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  background: var(--paper-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gst-calc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.gst-calc-row b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+.gst-calc-row.grand {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink);
+  font-weight: 500;
+}
+
 .recurring-badge {
   display: inline-flex;
   align-items: center;
