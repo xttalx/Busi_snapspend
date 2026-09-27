@@ -86,6 +86,102 @@ function paidBillAsExpense(bill) {
   };
 }
 
+/* ---------- Dashboard primitives ---------- */
+function dashMoney(n) {
+  return (n < 0 ? "−" : "") + "$" + Math.round(Math.abs(n)).toLocaleString("en-US");
+}
+
+function dashShortDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function dashCompare(current, previous) {
+  if (Math.round(current) === Math.round(previous)) return { kind: "flat", pct: 0 };
+  if (!previous) return { kind: "none", pct: 0 };
+  // |previous| keeps the sign meaningful when the baseline is a loss.
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
+  if (Math.abs(pct) < 0.05) return { kind: "flat", pct: 0 };
+  return { kind: "change", pct };
+}
+
+function DashDelta({ current, previous, compare, goodWhen = "up" }) {
+  const { kind, pct } = dashCompare(current, previous);
+  if (kind === "none") {
+    return <span className="dash-delta"><span>No {compare} data</span></span>;
+  }
+  if (kind === "flat") {
+    return (
+      <span className="dash-delta">
+        <span className="dash-delta-pill is-neutral">No change</span>
+        <span>vs. {compare}</span>
+      </span>
+    );
+  }
+  const rising = pct > 0;
+  const good = goodWhen === "up" ? rising : !rising;
+  return (
+    <span className="dash-delta">
+      <span className={"dash-delta-pill " + (good ? "is-positive" : "is-negative")}>
+        <Icon name={rising ? "arrow_up" : "arrow_down"} size={12} stroke={1.8} aria-hidden="true" />
+        <span className="dash-sr-only">{rising ? "Up" : "Down"}</span>
+        {Math.abs(pct) > 999 ? ">999" : Math.abs(pct).toFixed(1)}%
+      </span>
+      <span>vs. {compare}</span>
+    </span>
+  );
+}
+
+function DashTrend({ values, startLabel, endLabel }) {
+  const w = 300;
+  const h = 48;
+  const pad = 2;
+  const min = Math.min(0, ...values);
+  const max = Math.max(0, ...values);
+  const range = max - min || 1;
+  const x = (i) => (i / (values.length - 1)) * w;
+  const y = (v) => pad + (1 - (v - min) / range) * (h - pad * 2);
+  const d = values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  return (
+    <div className="dash-trend">
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img"
+        aria-label={`Cumulative net profit, ${startLabel} to ${endLabel}`}>
+        <line className="dash-trend-zero" x1="0" x2={w} y1={y(0)} y2={y(0)} />
+        <path className="dash-trend-line" d={d} />
+      </svg>
+      <div className="dash-trend-axis" aria-hidden="true">
+        <span>{startLabel}</span>
+        <span>{endLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function DashMetric({ label, value, previous, compare, goodWhen }) {
+  return (
+    <div className="dash-card dash-metric">
+      <div className="dash-metric-label">{label}</div>
+      <div className="dash-metric-value">{dashMoney(value)}</div>
+      <DashDelta current={value} previous={previous} compare={compare} goodWhen={goodWhen} />
+    </div>
+  );
+}
+
+function DashFlowRow({ label, amount, meta, current, previous, compare, goodWhen, onClick, total = false }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag type={onClick ? "button" : undefined} onClick={onClick}
+      className={"dash-flow-row" + (total ? " is-total" : "")}>
+      <span className="dash-flow-label">{label}</span>
+      <span className="dash-flow-amount">{amount}</span>
+      <span className="dash-flow-chev" aria-hidden="true">{onClick ? <Icon name="chev_r" size={14} /> : null}</span>
+      <span className="dash-flow-meta">{meta}</span>
+      <DashDelta current={current} previous={previous} compare={compare} goodWhen={goodWhen} />
+    </Tag>
+  );
+}
+
 function Dashboard({ state, go }) {
   const { expenses, bills = [], invoices, clients, paystubs } = state;
 
@@ -123,23 +219,12 @@ function Dashboard({ state, go }) {
   const prevYearWages = sumInKeys(prevYtdKeys, wagesIn);
   const prevYearBills = sumInKeys(prevYtdKeys, billsIn);
 
-  const dYearRev = pctChange(yearRevenue, prevYearRevenue);
-  const dYearExp = pctChange(yearExpense, prevYearExpense);
-  const dYearWages = pctChange(yearWages, prevYearWages);
-  const dYearBills = pctChange(yearBills, prevYearBills);
-
   const yearNet = yearRevenue - yearExpense - yearWages - yearBills;
   const prevYearNet = prevYearRevenue - prevYearExpense - prevYearWages - prevYearBills;
-  const dYearNet = pctChange(yearNet, prevYearNet);
 
   const netIn = (k) => revenue(k) - directExpensesIn(k) - billsIn(k) - wagesIn(k);
-  const monthNetIn = (k) => revenue(k) - expensesIn(k) - wagesIn(k);
-
-  const yearRevSpark = ytdKeys.map(revenue);
-  const yearExpSpark = ytdKeys.map(directExpensesIn);
-  const yearWageSpark = ytdKeys.map(wagesIn);
-  const yearBillsSpark = ytdKeys.map(billsIn);
-  const yearNetSpark = ytdKeys.map(netIn);
+  let runningNet = 0;
+  const ytdNetTrend = ytdKeys.map((k) => (runningNet += netIn(k)));
 
   const monthRevenue = revenue(monthKey);
   const monthExpense = expensesIn(monthKey);
@@ -151,16 +236,6 @@ function Dashboard({ state, go }) {
   const prevWages = wagesIn(prevKey);
   const prevNet = prevRevenue - prevExpense - prevWages;
 
-  const dRev = pctChange(monthRevenue, prevRevenue);
-  const dExp = pctChange(monthExpense, prevExpense);
-  const dWages = pctChange(monthWages, prevWages);
-  const dNet = pctChange(monthNet, prevNet);
-
-  const sparkKeys = lastMonthKeys(12, now);
-  const revSpark = sparkKeys.map(revenue);
-  const expSpark = sparkKeys.map(expensesIn);
-  const wageSpark = sparkKeys.map(wagesIn);
-  const monthNetSpark = sparkKeys.map(monthNetIn);
   const paidThisMonth = invoices.filter(i => i.status === "paid" && i.date.startsWith(monthKey)).length;
   const expenseEntriesThisMonth =
   expenses.filter((e) => (e.date || "").startsWith(monthKey)).length +
@@ -175,241 +250,155 @@ function Dashboard({ state, go }) {
   sort((a, b) => b.date.localeCompare(a.date)).
   slice(0, 6);
   const recentInvoices = [...invoices].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
-  const fmt = (n) => Math.round(n).toLocaleString("en-US");
-
-  const NetKpi = ({ label, net, delta, compareLabel, spark }) => (
-    <div className="kpi kpi-net">
-      <div className="kicker">{label}</div>
-      <div className={"value " + (net >= 0 ? "positive" : "negative")}>
-        <span className="sym">$</span>{fmt(Math.abs(net))}
-        <span className="kpi-net-tag">{net >= 0 ? "profit" : "loss"}</span>
-      </div>
-      <div className={"delta " + (delta >= 0 ? "up" : "down")}>
-        <Icon name={delta >= 0 ? "arrow_up" : "arrow_down"} size={11} />
-        {Math.abs(delta).toFixed(1)}% vs. {compareLabel}
-      </div>
-      <Sparkline values={spark.length ? spark : [0]} color={net >= 0 ? "var(--positive)" : "var(--accent)"} />
-    </div>
-  );
+  const heroTone = yearNet > 0 ? "positive" : yearNet < 0 ? "negative" : "neutral";
+  const heroBadge = yearNet > 0 ? "Profit" : yearNet < 0 ? "Loss" : "Break-even";
+  const trendStart = new Date(now.getFullYear(), 0, 1).toLocaleDateString("en-US", { month: "short" });
+  const trendEnd = now.toLocaleDateString("en-US", { month: "short" });
+  const todayShort = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const ytdCompare = `${prevYear} YTD`;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const outflow = (n) => (n > 0 ? "−" : "") + dashMoney(n);
 
   return (
-    <>
-      <div className="kpis kpis-5">
-        <div className="kpi">
-          <div className="kicker">{yearLabel} revenue · YTD</div>
-          <div className="value"><span className="sym">$</span>{fmt(yearRevenue)}</div>
-          <div className={"delta " + (dYearRev >= 0 ? "up" : "down")}>
-            <Icon name={dYearRev >= 0 ? "arrow_up" : "arrow_down"} size={11} />
-            {Math.abs(dYearRev).toFixed(1)}% vs. {prevYear} YTD
-          </div>
-          <Sparkline values={yearRevSpark.length ? yearRevSpark : [0]} color="var(--positive)" />
+    <div className="dash">
+      <section className="dash-card dash-hero" aria-labelledby="dash-hero-label">
+        <div className="dash-hero-top">
+          <h2 id="dash-hero-label" className="dash-eyebrow">Net profit · {yearLabel} YTD</h2>
+          <span className={"dash-badge is-" + heroTone}>{heroBadge}</span>
         </div>
-        <div className="kpi">
-          <div className="kicker">{yearLabel} expenses · YTD</div>
-          <div className="value"><span className="sym">$</span>{fmt(yearExpense)}</div>
-          <div className={"delta " + (dYearExp <= 0 ? "up" : "down")}>
-            <Icon name={dYearExp <= 0 ? "arrow_down" : "arrow_up"} size={11} />
-            {Math.abs(dYearExp).toFixed(1)}% vs. {prevYear} YTD
-          </div>
-          <Sparkline values={yearExpSpark.length ? yearExpSpark : [0]} color="var(--accent)" />
+        <div className="dash-hero-value">
+          {yearNet < 0 && <span className="dash-hero-sign">−</span>}
+          <span className="dash-hero-cur">$</span>
+          {Math.round(Math.abs(yearNet)).toLocaleString("en-US")}
         </div>
-        <div className="kpi">
-          <div className="kicker">{yearLabel} wages · YTD</div>
-          <div className="value"><span className="sym">$</span>{fmt(yearWages)}</div>
-          <div className={"delta " + (dYearWages <= 0 ? "up" : "down")}>
-            <Icon name={dYearWages <= 0 ? "arrow_down" : "arrow_up"} size={11} />
-            {Math.abs(dYearWages).toFixed(1)}% vs. {prevYear} YTD
-          </div>
-          <Sparkline values={yearWageSpark.length ? yearWageSpark : [0]} color="var(--ink-2)" />
-        </div>
-        <div className="kpi">
-          <div className="kicker">{yearLabel} bills · YTD</div>
-          <div className="value"><span className="sym">$</span>{fmt(yearBills)}</div>
-          <div className={"delta " + (dYearBills <= 0 ? "up" : "down")}>
-            <Icon name={dYearBills <= 0 ? "arrow_down" : "arrow_up"} size={11} />
-            {Math.abs(dYearBills).toFixed(1)}% vs. {prevYear} YTD
-          </div>
-          <Sparkline values={yearBillsSpark.length ? yearBillsSpark : [0]} color="#6e1f1f" />
-        </div>
-        <NetKpi
-          label={`${yearLabel} net · YTD`}
-          net={yearNet}
-          delta={dYearNet}
-          compareLabel={`${prevYear} YTD`}
-          spark={yearNetSpark}
-        />
-      </div>
+        <DashDelta current={yearNet} previous={prevYearNet} compare={ytdCompare} />
+        {ytdNetTrend.length >= 2 && <DashTrend values={ytdNetTrend} startLabel={trendStart} endLabel={trendEnd} />}
+        <p className="dash-hero-caption">Jan 1 – {todayShort} · after expenses, bills &amp; wages</p>
+      </section>
 
-      <div className="kpis kpis-4">
-        <div className="kpi">
-          <div className="kicker">{monthLabel} revenue · invoices paid</div>
-          <div className="value"><span className="sym">$</span>{fmt(monthRevenue)}</div>
-          <div className={"delta " + (dRev >= 0 ? "up" : "down")}>
-            <Icon name={dRev >= 0 ? "arrow_up" : "arrow_down"} size={11} />
-            {Math.abs(dRev).toFixed(1)}% vs. {prevMonthLabel}
-          </div>
-          <Sparkline values={revSpark.length ? revSpark : [0]} color="var(--positive)" />
+      <section className="dash-section" aria-labelledby="dash-ytd-label">
+        <div className="dash-section-head">
+          <h2 id="dash-ytd-label" className="dash-eyebrow">Year to date · {yearLabel}</h2>
         </div>
-        <div className="kpi">
-          <div className="kicker">{monthLabel} expenses · operating</div>
-          <div className="value"><span className="sym">$</span>{fmt(monthExpense)}</div>
-          <div className={"delta " + (dExp <= 0 ? "up" : "down")}>
-            <Icon name={dExp <= 0 ? "arrow_down" : "arrow_up"} size={11} />
-            {Math.abs(dExp).toFixed(1)}% vs. {prevMonthLabel}
-          </div>
-          <Sparkline values={expSpark.length ? expSpark : [0]} color="var(--accent)" />
+        <div className="dash-grid">
+          <DashMetric label="Revenue" value={yearRevenue} previous={prevYearRevenue} compare={ytdCompare} goodWhen="up" />
+          <DashMetric label="Expenses" value={yearExpense} previous={prevYearExpense} compare={ytdCompare} goodWhen="down" />
+          <DashMetric label="Wages" value={yearWages} previous={prevYearWages} compare={ytdCompare} goodWhen="down" />
+          <DashMetric label="Bills" value={yearBills} previous={prevYearBills} compare={ytdCompare} goodWhen="down" />
         </div>
-        <div className="kpi">
-          <div className="kicker">{monthLabel} wages · payroll</div>
-          <div className="value"><span className="sym">$</span>{fmt(monthWages)}</div>
-          <div className={"delta " + (dWages <= 0 ? "up" : "down")}>
-            <Icon name={dWages <= 0 ? "arrow_down" : "arrow_up"} size={11} />
-            {Math.abs(dWages).toFixed(1)}% vs. {prevMonthLabel}
-          </div>
-          <Sparkline values={wageSpark.length ? wageSpark : [0]} color="var(--ink-2)" />
-        </div>
-        <NetKpi
-          label={`${monthLabel} net · profit / loss`}
-          net={monthNet}
-          delta={dNet}
-          compareLabel={prevMonthLabel}
-          spark={monthNetSpark}
-        />
-      </div>
+      </section>
 
-      {/* Cash flow breakdown — Revenue − Expenses − Wages = Net */}
-      <div className="cashflow">
-        <div className="cashflow-head">
-          <div className="kicker">Cash flow · {monthLabel}</div>
-          <button className="btn ghost sm" onClick={() => go("reports", {})}>
-            Open full report <Icon name="arrow" size={13} />
+      <section className="dash-section" aria-labelledby="dash-month-label">
+        <div className="dash-section-head">
+          <h2 id="dash-month-label" className="dash-eyebrow">This month · {monthLabel}</h2>
+          <button type="button" className="dash-link" onClick={() => go("reports", {})}>
+            Full report <Icon name="chev_r" size={14} />
           </button>
         </div>
-        <div className="cashflow-row">
-          <div className="cashflow-term plus">
-            <div className="cashflow-lbl">Revenue</div>
-            <div className="cashflow-num">${fmt(monthRevenue)}</div>
-            <div className="cashflow-sub">{paidThisMonth} {paidThisMonth === 1 ? "invoice" : "invoices"} paid</div>
-          </div>
-          <div className="cashflow-op">−</div>
-          <div className="cashflow-term minus" onClick={() => go("expenses", {})}>
-            <div className="cashflow-lbl">Expenses</div>
-            <div className="cashflow-num">${fmt(monthExpense)}</div>
-            <div className="cashflow-sub">{expenseEntriesThisMonth} entries logged (expenses + bills)</div>
-          </div>
-          <div className="cashflow-op">−</div>
-          <div className="cashflow-term minus" onClick={() => go("paystubs", {})}>
-            <div className="cashflow-lbl">Wages paid</div>
-            <div className="cashflow-num">${fmt(monthWages)}</div>
-            <div className="cashflow-sub">{state.employees.length} on payroll</div>
-          </div>
-          <div className="cashflow-op">=</div>
-          <div className={"cashflow-term net " + (monthNet >= 0 ? "positive" : "negative")}>
-            <div className="cashflow-lbl">Net cash</div>
-            <div className="cashflow-num cashflow-net">${fmt(Math.abs(monthNet))}{monthNet < 0 && <span style={{ fontFamily: "var(--mono)", fontSize: 18, opacity: 0.6, marginLeft: 6 }}>(loss)</span>}</div>
-            <div className={"cashflow-sub delta " + (dNet >= 0 ? "up" : "down")}>
-              <Icon name={dNet >= 0 ? "arrow_up" : "arrow_down"} size={11} />
-              {Math.abs(dNet).toFixed(1)}% vs. {prevMonthLabel}
+        <div className="dash-card dash-flow">
+          <DashFlowRow
+            label="Revenue"
+            amount={dashMoney(monthRevenue)}
+            meta={`${plural(paidThisMonth, "invoice", "invoices")} paid`}
+            current={monthRevenue} previous={prevRevenue} compare={prevMonthLabel} goodWhen="up"
+            onClick={() => go("invoices", {})} />
+          <DashFlowRow
+            label="Expenses"
+            amount={outflow(monthExpense)}
+            meta={`${plural(expenseEntriesThisMonth, "entry", "entries")} logged`}
+            current={monthExpense} previous={prevExpense} compare={prevMonthLabel} goodWhen="down"
+            onClick={() => go("expenses", {})} />
+          <DashFlowRow
+            label="Wages"
+            amount={outflow(monthWages)}
+            meta={`${state.employees.length} on payroll`}
+            current={monthWages} previous={prevWages} compare={prevMonthLabel} goodWhen="down"
+            onClick={() => go("paystubs", {})} />
+          <DashFlowRow
+            total
+            label="Net cash flow"
+            amount={dashMoney(monthNet)}
+            meta="After expenses and wages"
+            current={monthNet} previous={prevNet} compare={prevMonthLabel} goodWhen="up" />
+        </div>
+        <p className="dash-footnote">
+          Outstanding receivables of <b>{dashMoney(outstanding)}</b> aren't counted above — they move
+          into revenue once their invoices are marked paid.
+        </p>
+      </section>
+
+      <section className="dash-section" aria-labelledby="dash-activity-label">
+        <div className="dash-section-head">
+          <h2 id="dash-activity-label" className="dash-eyebrow">Recent activity</h2>
+        </div>
+        <div className="dash-activity">
+          <div className="dash-card dash-list-card">
+            <div className="dash-card-head">
+              <h3 className="dash-card-title">Expenses</h3>
+              <button type="button" className="dash-link" onClick={() => go("expenses", {})}>View all</button>
             </div>
+            {recent.length === 0 ? (
+              <p className="dash-empty">No expenses yet. Log your first expense to see activity here.</p>
+            ) : (
+              <ul className="dash-list">
+                {recent.map((e) => {
+                  const cat = e.isBill ?
+                  { name: "Bills", color: "#6e1f1f" } :
+                  state.CATEGORIES.find((c) => c.id === e.category);
+                  return (
+                    <li key={e.id} className="dash-row">
+                      <div className="dash-row-main">
+                        <div className="dash-row-title">
+                          <span className="dash-dot" style={{ background: cat?.color || "#98a2b3" }} aria-hidden="true" />
+                          <span className="dash-truncate">{e.vendor}</span>
+                        </div>
+                        <div className="dash-row-sub">{cat?.name || "Other"}{e.note ? " · " + e.note : ""}</div>
+                      </div>
+                      <div className="dash-row-end">
+                        <div className="dash-row-amount">{fmtMoney(e.amount)}</div>
+                        <div className="dash-row-sub">{dashShortDate(e.date)}</div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="dash-card dash-list-card">
+            <div className="dash-card-head">
+              <h3 className="dash-card-title">Invoices</h3>
+              <button type="button" className="dash-link" onClick={() => go("invoices", {})}>View all</button>
+            </div>
+            {recentInvoices.length === 0 ? (
+              <p className="dash-empty">No invoices yet.</p>
+            ) : (
+              <ul className="dash-list">
+                {recentInvoices.map((inv) => {
+                  const c = clients.find((cl) => cl.id === inv.clientId);
+                  const total = inv.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (inv.taxRate || 0));
+                  return (
+                    <li key={inv.id}>
+                      <button type="button" className="dash-row" onClick={() => go("invoices", { focusId: inv.id })}>
+                        <div className="dash-row-main">
+                          <div className="dash-row-title"><span className="dash-truncate">{c?.name || "Unknown client"}</span></div>
+                          <div className="dash-row-sub">{inv.number} · Due {dashShortDate(inv.due)}</div>
+                        </div>
+                        <div className="dash-row-end">
+                          <div className="dash-row-amount">{fmtMoney(total)}</div>
+                          <span className={"dash-status is-" + inv.status}>{inv.status}</span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
-        <div className="cashflow-note">
-          Outstanding receivables of <b>${fmt(outstanding)}</b> are not counted above —
-          they'll flow into revenue once their invoices are marked paid.
-        </div>
-      </div>
-
-      <div className="section-head">
-        <h2>Recent activity</h2>
-        <span className="meta">{today}</span>
-      </div>
-
-      <div className="report-grid">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th style={{ width: 100 }}>Date</th>
-              <th>Vendor</th>
-              <th>Category</th>
-              <th className="num">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent.length === 0 && (
-              <tr>
-                <td colSpan="4"><div className="empty">No expenses yet. Log your first expense to see activity here.</div></td>
-              </tr>
-            )}
-            {recent.map(e => {
-              const cat = e.isBill ?
-              { name: "Bills", color: "#6e1f1f" } :
-              state.CATEGORIES.find(c => c.id === e.category);
-              return (
-                <tr key={e.id}>
-                  <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{e.date.slice(5)}</span></td>
-                  <td>
-                    <div className="vendor">{e.vendor}</div>
-                    <div className="sub">{e.note}</div>
-                  </td>
-                  <td>
-                    <span className="cat-tag"><span className="swatch" style={{ background: cat?.color || "#999" }}></span>{cat?.name || "Other"}</span>
-                  </td>
-                  <td className="num">{fmtMoney(e.amount)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <div>
-          <div style={{
-            borderTop: "1px solid var(--rule)",
-            paddingTop: 14,
-            display: "flex",
-            flexDirection: "column",
-            gap: 14
-          }}>
-            <div className="kicker" style={{ fontSize: 10 }}>Open invoices</div>
-            {recentInvoices.length === 0 && (
-              <div className="empty" style={{ padding: "12px 0" }}>No invoices yet.</div>
-            )}
-            {recentInvoices.map(inv => {
-              const c = clients.find(cl => cl.id === inv.clientId);
-              const total = inv.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (inv.taxRate || 0));
-              return (
-                <button key={inv.id} className="list-row-btn" onClick={() => go("invoices", { focusId: inv.id })}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: "2px 12px",
-                    alignItems: "center",
-                    padding: "10px 0",
-                    borderBottom: "1px solid var(--rule-soft)",
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: "1px solid var(--rule-soft)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    width: "100%",
-                    fontFamily: "var(--sans)",
-                    color: "var(--ink-2)",
-                  }}>
-                  <span style={{ fontFamily: "var(--serif)", fontSize: 15, color: "var(--ink)" }}>{c?.name || "Unknown client"}</span>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{fmtMoney(total)}</span>
-                  <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{inv.number} · due {fmtDate(inv.due)}</span>
-                  <span className={"status " + inv.status} style={{ justifySelf: "end" }}>{inv.status}</span>
-                </button>
-              );
-            })}
-            <button className="btn ghost" onClick={() => go("invoices", {})} style={{ alignSelf: "flex-start", paddingLeft: 0 }}>
-              All invoices <Icon name="arrow" size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
+      </section>
+    </div>
   );
 }
 window.Dashboard = Dashboard;

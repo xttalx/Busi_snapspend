@@ -835,7 +835,7 @@ function App() {
   if (route === "transactions") screen = <TransactionHistoryScreen state={state} go={go} />;
 
   return (
-    <div className="app" data-screen-label={"App · " + meta.title}>
+    <div className="app" data-route={route} data-screen-label={"App · " + meta.title}>
       <Sidebar
         route={route}
         setRoute={(r) => go(r, {})}
@@ -844,7 +844,7 @@ function App() {
         onSignOut={supabaseEnabled && session ? handleSignOut : null}
         toast={toast}
       />
-      <main className="page">
+      <main className={"page page--" + route}>
         <div className="page-head print-hide">
           <div className="titles">
             {route === "dashboard" ?
@@ -852,7 +852,9 @@ function App() {
                 <h1 className="dashboard-biz-title">
                   {dashboardName}<span className="dot"></span>
                 </h1>
-                <span className="dashboard-biz-sub">Overview dashboard</span>
+                <span className="dashboard-biz-sub">
+                  Overview · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                </span>
               </> :
             <>
                 {showKickers && <span className="kicker">{meta.kicker}</span>}
@@ -863,11 +865,11 @@ function App() {
           <div className="page-actions">
             {route === "dashboard" &&
             <>
-                <button className="btn" onClick={() => go("invoices", {})}>
-                  <Icon name="invoice" size={13} /> New invoice
+                <button type="button" className="btn dash-btn dash-btn--secondary" onClick={() => go("invoices", {})}>
+                  <Icon name="invoice" size={16} /> New invoice
                 </button>
-                <button className="btn primary" onClick={() => go("expenses", {})}>
-                  <Icon name="plus" size={13} /> Log expense
+                <button type="button" className="btn dash-btn dash-btn--primary" onClick={() => go("expenses", {})}>
+                  <Icon name="plus" size={16} /> Log expense
                 </button>
               </>
             }
