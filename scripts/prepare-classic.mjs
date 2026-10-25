@@ -22,6 +22,7 @@ const copyList = [
   "icons.jsx",
   "screens-1.jsx",
   "screens-2.jsx",
+  "takeoffs.jsx",
   "styles.css",
   "supabase.js",
   "tweaks-panel.jsx",

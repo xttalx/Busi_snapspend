@@ -122,6 +122,7 @@
     if (profileResult.data?.profile) {
       const profile = { ...DEFAULT_USER_BUSINESS, ...profileResult.data.profile };
       delete profile.__estimates;
+      delete profile.__takeoffs;
       return profile;
     }
     await sb().from("business_profiles").upsert({
@@ -169,7 +170,19 @@
     return next;
   }
 
-  async function persistEstimatesToProfile(userId, estimates) {
+  // Profile backups read-modify-write one row; serialize so concurrent saves don't drop each other's field.
+  let profileWriteQueue = Promise.resolve();
+  function queueProfileWrite(task) {
+    const run = profileWriteQueue.then(task, task);
+    profileWriteQueue = run.catch(() => {});
+    return run;
+  }
+
+  function persistEstimatesToProfile(userId, estimates) {
+    return queueProfileWrite(() => writeEstimatesProfile(userId, estimates));
+  }
+
+  async function writeEstimatesProfile(userId, estimates) {
     const cloudList = (estimates || []).map(stripEstimateForCloud);
     const { data, error: readError } = await sb()
       .from("business_profiles")
@@ -263,6 +276,103 @@
     await persistEstimatesToProfile(userId, list);
   }
 
+  /* Takeoffs (project calculators): table + profile backup + local cache, like estimates. */
+  function takeoffsLocalKey(userId) {
+    return `marten_takeoffs_${userId || "local"}`;
+  }
+
+  function readTakeoffsLocal(userId) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(takeoffsLocalKey(userId)) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  function writeTakeoffsLocal(userId, takeoffs) {
+    try {
+      localStorage.setItem(takeoffsLocalKey(userId), JSON.stringify(takeoffs || []));
+    } catch (err) {
+      console.warn("Could not cache calculations locally:", err);
+    }
+  }
+
+  function persistTakeoffsToProfile(userId, takeoffs) {
+    return queueProfileWrite(() => writeTakeoffsProfile(userId, takeoffs));
+  }
+
+  async function writeTakeoffsProfile(userId, takeoffs) {
+    const { data, error: readError } = await sb()
+      .from("business_profiles")
+      .select("profile")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (readError) throw readError;
+    const current = data?.profile || { ...DEFAULT_USER_BUSINESS };
+    const { error } = await sb().from("business_profiles").upsert({
+      user_id: userId,
+      profile: { ...current, __takeoffs: takeoffs || [] },
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+  }
+
+  async function fetchTakeoffs(userId, profileRaw) {
+    const fromProfile = Array.isArray(profileRaw?.__takeoffs) ? profileRaw.__takeoffs : [];
+    let fromTable = [];
+    let tableOk = false;
+    try {
+      fromTable = await fetchTable("takeoffs", userId);
+      tableOk = true;
+    } catch (_error) {
+      console.warn("takeoffs table not found yet; using profile/local backup. Run supabase/takeoffs.sql.");
+    }
+
+    let takeoffs;
+    if (tableOk && fromTable.length) takeoffs = fromTable;
+    else if (fromProfile.length) takeoffs = fromProfile;
+    else takeoffs = readTakeoffsLocal(userId);
+    writeTakeoffsLocal(userId, takeoffs);
+
+    if (tableOk && !fromTable.length && takeoffs.length) {
+      for (const t of takeoffs) {
+        try {
+          await upsertEntity("takeoffs", userId, t);
+        } catch (_e) {
+          /* ignore per-row migrate failures */
+        }
+      }
+    }
+    return takeoffs;
+  }
+
+  async function saveTakeoff(userId, takeoff, allTakeoffs) {
+    const list = (allTakeoffs || []).map((t) => (t.id === takeoff.id ? takeoff : t));
+    if (!list.some((t) => t.id === takeoff.id)) list.unshift(takeoff);
+    writeTakeoffsLocal(userId, list);
+    try {
+      await upsertEntity("takeoffs", userId, takeoff);
+    } catch (err) {
+      console.warn("Takeoff table sync failed; saved to profile backup.", err);
+    }
+    await persistTakeoffsToProfile(userId, list);
+  }
+
+  async function removeTakeoffs(userId, ids, allTakeoffs) {
+    const drop = new Set(ids || []);
+    const list = (allTakeoffs || []).filter((t) => !drop.has(t.id));
+    writeTakeoffsLocal(userId, list);
+    for (const id of drop) {
+      try {
+        await deleteEntity("takeoffs", id);
+      } catch (err) {
+        console.warn("Takeoff table delete failed; updating profile backup.", err);
+      }
+    }
+    await persistTakeoffsToProfile(userId, list);
+  }
+
   async function fetchTableSafe(table, userId) {
     try {
       return await fetchTable(table, userId);
@@ -337,6 +447,7 @@
     const profileRaw = profileResult.data?.profile || null;
     const userBusiness = await ensureBusinessProfile(userId, profileResult);
     const estimates = await fetchEstimates(userId, profileRaw);
+    const takeoffs = await fetchTakeoffs(userId, profileRaw);
     const { generated, updatedTemplates } = applyDueRecurring(recurringExpenses);
     const mergedRecurring = recurringExpenses.map((t) => {
       const u = updatedTemplates.find((x) => x.id === t.id);
@@ -351,6 +462,7 @@
       employees,
       paystubs,
       estimates,
+      takeoffs,
       recurringExpenses: mergedRecurring,
       userBusiness,
       _pendingRecurring: { generated, updatedTemplates },
@@ -388,6 +500,13 @@
       case "REMOVE_ESTIMATE":
         await removeEstimate(userId, action.id, state?.estimates || []);
         break;
+      case "ADD_TAKEOFF":
+      case "UPDATE_TAKEOFF":
+        await saveTakeoff(userId, action.takeoff, state?.takeoffs || []);
+        break;
+      case "REMOVE_TAKEOFFS":
+        await removeTakeoffs(userId, action.ids, state?.takeoffs || []);
+        break;
       case "ADD_BILL":
       case "UPDATE_BILL":
         await saveBill(userId, action.bill);
@@ -412,25 +531,29 @@
       case "REMOVE_CLIENT":
         await deleteEntity("clients", action.id);
         break;
-      case "UPDATE_USER_BUSINESS": {
-        const { data } = await sb()
-          .from("business_profiles")
-          .select("profile")
-          .eq("user_id", userId)
-          .maybeSingle();
-        const existingEstimates = Array.isArray(data?.profile?.__estimates)
-          ? data.profile.__estimates
-          : (state?.estimates || []).map(stripEstimateForCloud);
-        const base = state?.userBusiness || action.profile || {};
-        const profile = { ...base, __estimates: existingEstimates };
-        const { error } = await sb().from("business_profiles").upsert({
-          user_id: userId,
-          profile,
-          updated_at: new Date().toISOString(),
+      case "UPDATE_USER_BUSINESS":
+        await queueProfileWrite(async () => {
+          const { data } = await sb()
+            .from("business_profiles")
+            .select("profile")
+            .eq("user_id", userId)
+            .maybeSingle();
+          const existingEstimates = Array.isArray(data?.profile?.__estimates)
+            ? data.profile.__estimates
+            : (state?.estimates || []).map(stripEstimateForCloud);
+          const existingTakeoffs = Array.isArray(data?.profile?.__takeoffs)
+            ? data.profile.__takeoffs
+            : state?.takeoffs || [];
+          const base = state?.userBusiness || action.profile || {};
+          const profile = { ...base, __estimates: existingEstimates, __takeoffs: existingTakeoffs };
+          const { error } = await sb().from("business_profiles").upsert({
+            user_id: userId,
+            profile,
+            updated_at: new Date().toISOString(),
+          });
+          if (error) throw error;
         });
-        if (error) throw error;
         break;
-      }
       default:
         break;
     }

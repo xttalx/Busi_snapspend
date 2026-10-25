@@ -8,7 +8,8 @@ const NAV = [
   { id: "invoices", label: "Invoices", icon: "invoice" },
   { id: "bills", label: "Bills", icon: "receipt" },
   { id: "paystubs", label: "Paystubs", icon: "paystub" },
-  { id: "estimates", label: "Estimates", icon: "estimate" }]
+  { id: "estimates", label: "Estimates", icon: "estimate" },
+  { id: "takeoffs", label: "Project calculators", icon: "ruler" }]
 },
 { group: "People", items: [
   { id: "employees", label: "Employees", icon: "employees" },
@@ -28,6 +29,7 @@ const PAGE_META = {
   bills: { kicker: "Payables", title: "Bills" },
   paystubs: { kicker: "Payroll", title: "Pay statements" },
   estimates: { kicker: "Quotes", title: "Estimates" },
+  takeoffs: { kicker: "Takeoffs", title: "Project calculators" },
   employees: { kicker: "People", title: "Your team" },
   clients: { kicker: "Registry", title: "Business clients" },
   reports: { kicker: "Insights", title: "Reports" },
@@ -58,6 +60,7 @@ const EMPTY_WORKSPACE = {
   employees: [],
   paystubs: [],
   estimates: [],
+  takeoffs: [],
   recurringExpenses: [],
   userBusiness: DEFAULT_USER_BUSINESS,
 };
@@ -74,6 +77,7 @@ function reducer(state, action) {
         employees: action.payload.employees,
         paystubs: action.payload.paystubs,
         estimates: action.payload.estimates || [],
+        takeoffs: action.payload.takeoffs || [],
         recurringExpenses: action.payload.recurringExpenses || [],
         userBusiness: action.payload.userBusiness,
       };
@@ -113,6 +117,17 @@ function reducer(state, action) {
       };
     case "REMOVE_ESTIMATE":
       return { ...state, estimates: (state.estimates || []).filter((e) => e.id !== action.id) };
+    case "ADD_TAKEOFF":
+      return { ...state, takeoffs: [action.takeoff, ...(state.takeoffs || [])] };
+    case "UPDATE_TAKEOFF":
+      return {
+        ...state,
+        takeoffs: (state.takeoffs || []).map((t) => t.id === action.takeoff.id ? action.takeoff : t),
+      };
+    case "REMOVE_TAKEOFFS": {
+      const ids = new Set(action.ids || []);
+      return { ...state, takeoffs: (state.takeoffs || []).filter((t) => !ids.has(t.id)) };
+    }
     case "ADD_BILL":
       return { ...state, bills: [action.bill, ...state.bills] };
     case "UPDATE_BILL":
@@ -829,6 +844,7 @@ function App() {
   if (route === "bills") screen = <BillsScreen state={state} dispatch={persistDispatch} toast={toast} userId={userId} params={params} />;else
   if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} billingStatus={billingStatus} refreshBilling={refreshBilling} />;else
   if (route === "estimates") screen = <EstimatesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "takeoffs") screen = <TakeoffsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} go={go} />;else
   if (route === "employees") screen = <EmployeesScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "clients") screen = <ClientsScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "reports") screen = <ReportsScreen state={state} />;else
@@ -884,7 +900,7 @@ function App() {
                 <Icon name="external" size={13} /> Export PDF
               </button>
             }
-            {route !== "dashboard" && route !== "invoices" && route !== "paystubs" && route !== "estimates" &&
+            {route !== "dashboard" && route !== "invoices" && route !== "paystubs" && route !== "estimates" && route !== "takeoffs" &&
             route !== "settings" && route !== "employees" && route !== "clients" && route !== "bills" && route !== "expenses" &&
             <button className="btn"><Icon name="external" size={13} /> Export CSV</button>
             }
