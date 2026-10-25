@@ -2,6 +2,28 @@
 const { useState: useState2, useMemo: useMemo2, useRef } = React;
 
 /* ---------- Invoices ---------- */
+function ProjectAddressField({ value, clientAddress, onChange, inputProps = {} }) {
+  const canCopy = !!(clientAddress && clientAddress.trim()) && clientAddress !== value;
+  return (
+    <div className="field">
+      <div className="field-label-row">
+        <label>Project address <span className="field-optional">Optional</span></label>
+        {canCopy &&
+        <button type="button" className="field-link" onClick={() => onChange(clientAddress)}>
+            Same as client address
+          </button>
+        }
+      </div>
+      <textarea
+        className="textarea"
+        rows={2}
+        {...inputProps}
+        value={value || ""}
+        placeholder="Job site or project location"
+        onChange={(e) => onChange(e.target.value)} />
+    </div>);
+}
+
 function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAutofill = false }) {
   const update = (patch) => onChange({ ...invoice, ...patch });
   const updateItem = (i, patch) => {
@@ -49,6 +71,11 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAu
           {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
+      <ProjectAddressField
+        value={invoice.projectAddress}
+        clientAddress={(clients.find((c) => c.id === invoice.clientId) || {}).address}
+        onChange={(projectAddress) => update({ projectAddress })}
+        inputProps={ac} />
       <div className="row-2">
         <div className="field">
           <label>Issued</label>
@@ -195,7 +222,7 @@ function InvoiceGstCalculator({ open, onClose, defaultRate, onApplyRate }) {
           <button className="iconbtn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
         <div className="body">
-          <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+          <div className="segmented">
             <button
               className={"btn sm " + (mode === "add" ? "" : "ghost")}
               style={mode === "add" ? { background: "var(--paper)", borderColor: "var(--rule)", flex: 1 } : { border: "none", flex: 1 }}
@@ -542,7 +569,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
           </div>
           <div className="right">
             <div className="doc-toolbar-actions">
-              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+              <div className="segmented">
                 <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
                 onClick={() => setMode("preview")}
                 style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
@@ -570,14 +597,14 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
           </div>
         </div>
 
-        <div className="two-col doc-two-col" style={{ fontFamily: "Arial" }}>
+        <div className="two-col doc-two-col">
           <div className="list-card doc-controls-col">
             {state.invoices.map((i) => {
               const c = state.clients.find((cl) => cl.id === i.clientId);
               const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
               return (
                 <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
-                  <span className="name" style={{ fontFamily: "Arial" }}>{c?.name || "Unknown client"}</span>
+                  <span className="name">{c?.name || "Unknown client"}</span>
                   <span className="amount">{fmtMoney(total)}</span>
                   <span className="meta">{i.number} · {fmtDate(i.date)}</span>
                   <select
@@ -601,7 +628,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
 
           <div className="doc-preview-col">
             <div className="doc-preview-actions mobile-doc-actions">
-              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+              <div className="segmented">
                 <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
                 onClick={() => setMode("preview")}
                 style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
@@ -788,6 +815,11 @@ function EstimateEditor({ estimate, clients, onChange }) {
           onChange={(e) => update({ clientAddress: e.target.value, clientId: "" })}
         />
       </div>
+      <ProjectAddressField
+        value={estimate.projectAddress}
+        clientAddress={estimate.clientAddress}
+        onChange={(projectAddress) => update({ projectAddress })} />
+
       <div className="row-2">
         <div className="field">
           <label>Client email</label>
@@ -1041,7 +1073,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
           </div>
           <div className="right">
             <div className="doc-toolbar-actions">
-              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+              <div className="segmented">
                 <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
                   onClick={() => setMode("preview")}
                   style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>
@@ -1063,14 +1095,14 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
           </div>
         </div>
 
-        <div className="two-col doc-two-col" style={{ fontFamily: "Arial" }}>
+        <div className="two-col doc-two-col">
           <div className="list-card doc-controls-col">
             {estimates.map((e) => {
               const total = (e.items || []).reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0) * (1 + (e.taxRate || 0));
               const label = e.clientCompany || e.clientName || "Untitled estimate";
               return (
                 <div key={e.id} className={"row " + (e.id === (selected || est?.id) ? "active" : "")} onClick={() => setSelected(e.id)}>
-                  <span className="name" style={{ fontFamily: "Arial" }}>{label}</span>
+                  <span className="name">{label}</span>
                   <span className="amount">{fmtMoney(total)}</span>
                   <span className="meta">{e.number} · {fmtDate(e.date)}</span>
                   <select
@@ -1093,7 +1125,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
 
           <div className="doc-preview-col">
             <div className="doc-preview-actions mobile-doc-actions">
-              <div style={{ display: "flex", gap: 4, padding: 3, background: "var(--paper-2)", borderRadius: "var(--r-md)" }}>
+              <div className="segmented">
                 <button className={"btn sm " + (mode === "preview" ? "" : "ghost")}
                   onClick={() => setMode("preview")}
                   style={mode === "preview" ? { background: "var(--paper)", borderColor: "var(--rule)" } : { border: "none" }}>

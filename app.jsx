@@ -142,7 +142,7 @@ function reducer(state, action) {
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "direction": "broadsheet",
-  "accent": "#b8442a",
+  "accent": "#1d2f55",
   "showKickers": true
 } /*EDITMODE-END*/;
 
@@ -175,7 +175,7 @@ function MartenTweaks({ tweaks, setTweak }) {
         { value: "ledger", label: "Ledger" }]
         } />
       <p style={{ fontSize: 11, color: "#888", margin: "4px 0 6px", lineHeight: 1.5, paddingLeft: 2 }}>
-        <b>Broadsheet</b> — cream paper, copper accent, financial-journal feel.<br />
+        <b>Broadsheet</b> — clean gray and white surfaces, navy accent (default).<br />
         <b>Manuscript</b> — warmer sepia, italic display, romantic.<br />
         <b>Ledger</b> — off-white, data-first, mono numerals up front.
       </p>
@@ -185,7 +185,7 @@ function MartenTweaks({ tweaks, setTweak }) {
         label="Accent"
         value={tweaks.accent}
         onChange={(v) => setTweak("accent", v)}
-        options={["#b8442a", "#1a1a1a", "#2f5a3e", "#6e1f1f"]} />
+        options={["#1d2f55", "#101828", "#2f5a3e", "#6e1f1f"]} />
 
       <TweakSection label="Page chrome" />
       <TweakToggle
@@ -546,7 +546,8 @@ function App() {
     if (dir) html.setAttribute("data-direction", dir);else
     html.removeAttribute("data-direction");
     html.style.setProperty("--accent", tweaks.accent);
-    html.style.setProperty("--accent-soft", `color-mix(in oklch, ${tweaks.accent} 22%, var(--paper))`);
+    html.style.setProperty("--accent-soft", `color-mix(in oklch, ${tweaks.accent} 9%, #ffffff)`);
+    html.style.setProperty("--accent-hover", `color-mix(in oklch, ${tweaks.accent} 82%, #000000)`);
   }, [tweaks.direction, tweaks.accent]);
 
   const go = (r, p = {}) => {setRoute(r);setParams(p);};
