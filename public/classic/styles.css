@@ -1006,12 +1006,21 @@ body {
 
 /* ---------- Document preview (invoice/paystub) ---------- */
 .doc-shell {
-  border: 1px solid var(--rule);
-  border-radius: var(--r-md);
+  /* PDF and on-screen document previews keep the classic copper / Arial look. */
+  --accent: #b8442a;
+  --accent-ink: #fbf7ef;
+  --serif: Arial, Helvetica, sans-serif;
+  --sans: Arial, Helvetica, sans-serif;
+  --mono: Arial, Helvetica, sans-serif;
+  --rule: #d8d1bf;
+  --ink-3: #6a655c;
+  border: 1px solid #d8d1bf;
+  border-radius: 4px;
   background: #fff;
   color: #111;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 0 rgba(23, 22, 20, 0.04);
+  font-family: Arial, Helvetica, sans-serif;
 }
 .doc-shell .head-block {
   background: var(--accent);
@@ -3909,7 +3918,7 @@ body { background: var(--canvas); color: var(--ink); }
 .toast .glyph { color: #75e0a7; }
 
 /* ---------- Document screens ---------- */
-.doc-shell { border-color: var(--rule); border-radius: var(--r-lg); box-shadow: var(--shadow-card); }
+.doc-shell { border-color: #d8d1bf; border-radius: 4px; box-shadow: 0 1px 0 rgba(23, 22, 20, 0.04); }
 .doc-toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .segmented {
   display: inline-flex;

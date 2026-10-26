@@ -1,4 +1,6 @@
-/* Printable document templates — Invoice, Estimate & Paystub */
+/* Printable document templates — Invoice, Estimate & Paystub
+   Branded color-block header (accent), serif title, mono numbers.
+*/
 
 const fmtMoney = (n, sym = "$") => {
   const sign = n < 0 ? "-" : "";
@@ -163,141 +165,110 @@ async function downloadEstimatePdf({ estimate, element, fast = false }) {
   await downloadPreviewPdfFromElement(element, `${estimate.number || "estimate"}.pdf`, { fast });
 }
 
-/* ---------- Modern invoice / estimate template ---------- */
-function DocHeader({ business, type, number }) {
-  return (
-    <div className="dm-top">
-      <div className="dm-brand">
-        <div className="dm-biz-name">{business.name}</div>
-        <div className="dm-biz-lines">
-          {business.address && <div className="dm-pre">{business.address}</div>}
-          {business.email && <div>{business.email}</div>}
-          {business.businessNo && <div>Business No. {business.businessNo}</div>}
-          {business.gstTaxId && <div>GST/Tax ID {business.gstTaxId}</div>}
-        </div>
-      </div>
-      <div className="dm-doc-id">
-        <div className="dm-doc-type">{type}</div>
-        <div className="dm-doc-num">{number}</div>
-      </div>
-    </div>);
-}
-
-function DocMeta({ cells }) {
-  return (
-    <div className="dm-meta">
-      {cells.map((c) =>
-      <div key={c.label} className={"dm-meta-cell" + (c.strong ? " is-strong" : "")}>
-          <div className="dm-label">{c.label}</div>
-          <div className="dm-meta-val">{c.value}</div>
-        </div>
-      )}
-    </div>);
-}
-
-function DocItems({ items, headers }) {
-  return (
-    <table className="dm-items">
-      <thead>
-        <tr>
-          <th>{headers[0]}</th>
-          <th className="num dm-col-qty">{headers[1]}</th>
-          <th className="num dm-col-rate">{headers[2]}</th>
-          <th className="num dm-col-amt">{headers[3]}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((it, i) => {
-          const qty = Number(it.qty || 0);
-          const rate = Number(it.rate || 0);
-          return (
-            <tr key={i}>
-              <td>
-                <div className="dm-desc">{it.desc || "—"}</div>
-                {it.sub && <div className="dm-sub">{it.sub}</div>}
-              </td>
-              <td className="num">{it.qty}</td>
-              <td className="num">{fmtMoney(rate)}</td>
-              <td className="num">{fmtMoney(qty * rate)}</td>
-            </tr>);
-        })}
-      </tbody>
-    </table>);
-}
-
-function DocTotals({ rows, grandLabel, grand }) {
-  return (
-    <div className="dm-totals">
-      {rows.map((r) =>
-      <div key={r.label} className="dm-total-row"><span>{r.label}</span><span>{r.value}</span></div>
-      )}
-      <div className="dm-total-row is-grand"><span>{grandLabel}</span><span>{grand}</span></div>
-    </div>);
-}
-
-function DocFooter({ business }) {
-  const note = (business.invoiceFooter || "").trim() || "Thank you for your business.";
-  return (
-    <div className="dm-footer">
-      <span>{note}</span>
-      {business.email && <span>{business.email}</span>}
-    </div>);
-}
-
 function InvoiceDocument({ invoice, client, business }) {
   const c = client || {};
-  const subtotal = invoice.items.reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
+  const items = invoice.items || [];
+  const subtotal = items.reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
   const taxRate = Number(invoice.taxRate) || 0;
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
 
   return (
-    <div className="doc-shell doc-modern">
-      <DocHeader business={business} type="Invoice" number={invoice.number} />
-
-      <DocMeta cells={[
-      { label: "Invoice no.", value: invoice.number || "—" },
-      { label: "Issue date", value: fmtDate(invoice.date) },
-      { label: "Due date", value: fmtDate(invoice.due) },
-      { label: "Amount due", value: fmtMoney(total), strong: true }]
-      } />
-
-      <div className="dm-parties">
-        <div className="dm-party">
-          <div className="dm-label">Bill to</div>
-          <div className="dm-party-name">{c.name || "—"}</div>
-          {c.address && <div className="dm-pre">{c.address}</div>}
-          {c.email && <div>{c.email}</div>}
+    <div className="doc-shell">
+      <div className="head-block">
+        <div>
+          <div className="doc-kicker">Invoice</div>
+          <h1 className="doc-title" style={{ fontFamily: "Arial" }}>{business.name}</h1>
         </div>
+        <div className="doc-num">
+          <div>{invoice.number}</div>
+          <div style={{ opacity: 0.7, marginTop: 4 }}>Issued {fmtDate(invoice.date)}</div>
+        </div>
+      </div>
+
+      <div className="body-block">
+        <div className="parties">
+          <div>
+            <div className="lbl">Billed to</div>
+            <p className="name" style={{ fontFamily: "Arial" }}>{c.name}</p>
+            <p>{c.address}</p>
+            <p>{c.email}</p>
+          </div>
+          <div>
+            <div className="lbl">From</div>
+            <p className="name" style={{ fontFamily: "Arial" }}>{business.name}</p>
+            <p>{business.address}</p>
+            <p>{business.email}</p>
+            {business.businessNo && <p>Business No.: {business.businessNo}</p>}
+            {business.gstTaxId && <p>GST/Tax ID: {business.gstTaxId}</p>}
+          </div>
+        </div>
+
         {invoice.projectAddress &&
-        <div className="dm-party">
-            <div className="dm-label">Project address</div>
-            <div className="dm-pre">{invoice.projectAddress}</div>
+        <div className="parties">
+            <div>
+              <div className="lbl">Project address</div>
+              <p style={{ whiteSpace: "pre-line" }}>{invoice.projectAddress}</p>
+            </div>
+          </div>
+        }
+
+        <div className="summary-grid">
+          <div className="cell">
+            <div className="lbl">Invoice no.</div>
+            <div className="val">{invoice.number}</div>
+          </div>
+          <div className="cell">
+            <div className="lbl">Date of issue</div>
+            <div className="val">{fmtDate(invoice.date)}</div>
+          </div>
+          <div className="cell">
+            <div className="lbl">Due date</div>
+            <div className="val">{fmtDate(invoice.due)}</div>
+          </div>
+        </div>
+
+        <table className="items">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th className="num" style={{ width: 60 }}>Qty</th>
+              <th className="num" style={{ width: 100 }}>Rate</th>
+              <th className="num" style={{ width: 110 }}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, i) =>
+            <tr key={i}>
+                <td>
+                  <div className="desc">{it.desc}</div>
+                  {it.sub && <div className="sub">{it.sub}</div>}
+                </td>
+                <td className="num">{it.qty}</td>
+                <td className="num">{fmtMoney(it.rate)}</td>
+                <td className="num">{fmtMoney(Number(it.qty || 0) * Number(it.rate || 0))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="totals">
+          <div className="stack">
+            <div className="row"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
+            {taxRate > 0 &&
+            <div className="row"><span>Tax · {(taxRate * 100).toFixed(2)}%</span><span>{fmtMoney(tax)}</span></div>
+            }
+            <div className="row grand"><span>Total due</span><span className="v">{fmtMoney(total)}</span></div>
+          </div>
+        </div>
+
+        {invoice.notes &&
+        <div className="footnote">
+            <strong style={{ color: "#111", letterSpacing: "0.18em", fontSize: 9.5, textTransform: "uppercase", fontFamily: "var(--mono)", fontWeight: 500 }}>Notes</strong>
+            <div style={{ marginTop: 6 }}>{invoice.notes}</div>
           </div>
         }
       </div>
-
-      <DocItems items={invoice.items} headers={["Description", "Qty", "Rate", "Amount"]} />
-
-      <div className="dm-summary">
-        <div className="dm-notes">
-          {invoice.notes &&
-          <>
-              <div className="dm-label">Notes</div>
-              <div className="dm-pre">{invoice.notes}</div>
-            </>
-          }
-        </div>
-        <DocTotals
-          rows={[
-          { label: "Subtotal", value: fmtMoney(subtotal) },
-          ...(taxRate > 0 ? [{ label: `Tax (${(taxRate * 100).toFixed(2)}%)`, value: fmtMoney(tax) }] : [])]
-          }
-          grandLabel="Total due"
-          grand={fmtMoney(total)} />
-      </div>
-
-      <DocFooter business={business} />
     </div>);
 }
 
@@ -414,75 +385,115 @@ function EstimateDocument({ estimate, business }) {
   );
 
   return (
-    <div className="doc-shell doc-modern">
-      <DocHeader business={business} type="Estimate" number={estimate.number} />
-
-      <DocMeta cells={[
-      { label: "Estimate no.", value: estimate.number || "—" },
-      { label: "Issue date", value: fmtDate(estimate.date) },
-      { label: "Valid until", value: fmtDate(estimate.validUntil) },
-      { label: "Estimate total", value: fmtMoney(total), strong: true }]
-      } />
-
-      <div className="dm-parties">
-        <div className="dm-party">
-          <div className="dm-label">Prepared for</div>
-          <div className="dm-party-name">{estimate.clientName || "—"}</div>
-          {estimate.clientCompany && <div>{estimate.clientCompany}</div>}
-          {estimate.clientAddress && <div className="dm-pre">{estimate.clientAddress}</div>}
-          {estimate.clientEmail && <div>{estimate.clientEmail}</div>}
-          {estimate.clientPhone && <div>{estimate.clientPhone}</div>}
+    <div className="doc-shell">
+      <div className="head-block">
+        <div>
+          <div className="doc-kicker">Estimate</div>
+          <h1 className="doc-title" style={{ fontFamily: "Arial" }}>{business.name}</h1>
         </div>
+        <div className="doc-num">
+          <div>{estimate.number}</div>
+          <div style={{ opacity: 0.7, marginTop: 4 }}>Issued {fmtDate(estimate.date)}</div>
+        </div>
+      </div>
+
+      <div className="body-block">
+        <div className="parties">
+          <div>
+            <div className="lbl">Prepared for</div>
+            <p className="name" style={{ fontFamily: "Arial" }}>{estimate.clientName || "—"}</p>
+            {estimate.clientCompany && <p>{estimate.clientCompany}</p>}
+            {estimate.clientAddress && <p>{estimate.clientAddress}</p>}
+            {estimate.clientEmail && <p>{estimate.clientEmail}</p>}
+            {estimate.clientPhone && <p>{estimate.clientPhone}</p>}
+          </div>
+          <div>
+            <div className="lbl">From</div>
+            <p className="name" style={{ fontFamily: "Arial" }}>{business.name}</p>
+            <p>{business.address}</p>
+            <p>{business.email}</p>
+            {business.businessNo && <p>Business No.: {business.businessNo}</p>}
+            {business.gstTaxId && <p>GST/Tax ID: {business.gstTaxId}</p>}
+          </div>
+        </div>
+
         {estimate.projectAddress &&
-        <div className="dm-party">
-            <div className="dm-label">Project address</div>
-            <div className="dm-pre">{estimate.projectAddress}</div>
+        <div className="parties">
+            <div>
+              <div className="lbl">Project address</div>
+              <p style={{ whiteSpace: "pre-line" }}>{estimate.projectAddress}</p>
+            </div>
+          </div>
+        }
+
+        <div className="summary-grid">
+          <div className="cell">
+            <div className="lbl">Estimate no.</div>
+            <div className="val">{estimate.number}</div>
+          </div>
+          <div className="cell">
+            <div className="lbl">Date of issue</div>
+            <div className="val">{fmtDate(estimate.date)}</div>
+          </div>
+          <div className="cell">
+            <div className="lbl">Valid until</div>
+            <div className="val">{fmtDate(estimate.validUntil)}</div>
+          </div>
+        </div>
+
+        {drawing && (
+          <div className="estimate-drawing">
+            <div className="lbl" style={{ marginBottom: 8 }}>Job drawing</div>
+            {isDrawingImage && drawingSrc ? (
+              <img src={drawingSrc} alt={drawing.name || "Drawing"} className="estimate-drawing-img" />
+            ) : (
+              <p className="estimate-drawing-file">{drawing.name || "Attached drawing"}</p>
+            )}
+          </div>
+        )}
+
+        <table className="items">
+          <thead>
+            <tr>
+              <th>Work</th>
+              <th className="num" style={{ width: 60 }}>Qty</th>
+              <th className="num" style={{ width: 100 }}>Unit price</th>
+              <th className="num" style={{ width: 110 }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, i) =>
+              <tr key={i}>
+                <td>
+                  <div className="desc">{it.desc || "—"}</div>
+                  {it.sub && <div className="sub">{it.sub}</div>}
+                </td>
+                <td className="num">{it.qty}</td>
+                <td className="num">{fmtMoney(it.rate)}</td>
+                <td className="num">{fmtMoney(Number(it.qty || 0) * Number(it.rate || 0))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="totals">
+          <div className="stack">
+            <div className="row"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
+            <div className="row">
+              <span>{taxLabel} · {(taxRate * 100).toFixed(2)}%</span>
+              <span>{fmtMoney(gst)}</span>
+            </div>
+            <div className="row grand"><span>Estimate total (incl. {taxLabel})</span><span className="v">{fmtMoney(total)}</span></div>
+          </div>
+        </div>
+
+        {estimate.notes &&
+          <div className="footnote">
+            <strong style={{ color: "#111", letterSpacing: "0.18em", fontSize: 9.5, textTransform: "uppercase", fontFamily: "var(--mono)", fontWeight: 500 }}>Notes</strong>
+            <div style={{ marginTop: 6 }}>{estimate.notes}</div>
           </div>
         }
       </div>
-
-      {drawing &&
-      <div className="dm-drawing">
-          <div className="dm-label">Job drawing</div>
-          {isDrawingImage && drawingSrc ?
-        <img src={drawingSrc} alt={drawing.name || "Drawing"} className="dm-drawing-img" /> :
-        <div className="dm-drawing-file">{drawing.name || "Attached drawing"}</div>
-        }
-        </div>
-      }
-
-      <DocItems items={items} headers={["Work", "Qty", "Unit price", "Total"]} />
-
-      <div className="dm-summary">
-        <div className="dm-notes">
-          {estimate.notes &&
-          <>
-              <div className="dm-label">Notes</div>
-              <div className="dm-pre">{estimate.notes}</div>
-            </>
-          }
-        </div>
-        <DocTotals
-          rows={[
-          { label: "Subtotal", value: fmtMoney(subtotal) },
-          { label: `${taxLabel} (${(taxRate * 100).toFixed(2)}%)`, value: fmtMoney(gst) }]
-          }
-          grandLabel={`Total (incl. ${taxLabel})`}
-          grand={fmtMoney(total)} />
-      </div>
-
-      <div className="dm-accept">
-        <div className="dm-sign">
-          <div className="dm-sign-line" />
-          <div className="dm-label">Accepted by (signature)</div>
-        </div>
-        <div className="dm-sign dm-sign-date">
-          <div className="dm-sign-line" />
-          <div className="dm-label">Date</div>
-        </div>
-      </div>
-
-      <DocFooter business={business} />
     </div>
   );
 }
