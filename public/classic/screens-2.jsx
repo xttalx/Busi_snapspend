@@ -1,6 +1,67 @@
 /* Invoices, Paystubs, Employees, Reports, Settings */
 const { useState: useState2, useMemo: useMemo2, useRef } = React;
 
+const ESTIMATE_STATUSES = [
+  ["draft", "Draft"],
+  ["sent", "Sent"],
+  ["approved", "Approved"],
+  ["accepted", "Accepted"],
+  ["declined", "Declined"],
+];
+
+function docNumberParts(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(.*?)(\d+)\s*$/);
+  if (!match) return { key: raw.toLowerCase(), prefix: raw.toLowerCase(), seq: null };
+  return {
+    key: raw.toLowerCase(),
+    prefix: match[1].replace(/[\s-]+$/g, "").toLowerCase(),
+    seq: parseInt(match[2], 10),
+  };
+}
+
+function collectDocNumbers(state, except) {
+  const rows = [];
+  (state?.invoices || []).forEach((doc) => rows.push({ kind: "invoice", id: doc.id, number: doc.number }));
+  (state?.estimates || []).forEach((doc) => rows.push({ kind: "estimate", id: doc.id, number: doc.number }));
+  (state?.bills || []).forEach((doc) => rows.push({ kind: "bill", id: doc.id, number: doc.number }));
+  return rows.filter((doc) => doc.number && !(except && doc.kind === except.kind && doc.id === except.id));
+}
+
+function numbersConflict(a, b) {
+  const left = docNumberParts(a);
+  const right = docNumberParts(b);
+  if (!left.key || !right.key) return false;
+  if (left.key === right.key) return true;
+  const ours = new Set(["", "inv", "est", "bill"]);
+  return left.seq != null && left.seq === right.seq && ours.has(left.prefix) && ours.has(right.prefix);
+}
+
+function findDocNumberConflict(state, number, except) {
+  return collectDocNumbers(state, except).find((doc) => numbersConflict(number, doc.number)) || null;
+}
+
+function nextDocNumber(state, prefix) {
+  const rows = collectDocNumbers(state);
+  let seq = rows.reduce((max, doc) => Math.max(max, docNumberParts(doc.number).seq || 0), 0) + 1;
+  let candidate = prefix + String(seq).padStart(4, "0");
+  while (findDocNumberConflict(state, candidate)) {
+    seq += 1;
+    candidate = prefix + String(seq).padStart(4, "0");
+  }
+  return candidate;
+}
+
+function estimateReadyForInvoice(estimate) {
+  const status = String(estimate?.status || "").toLowerCase();
+  return status === "approved" || status === "accepted";
+}
+
+function linkedInvoiceForEstimate(state, estimate) {
+  if (!estimate) return null;
+  return (state?.invoices || []).find((invoice) => invoice.id === estimate.invoiceId || invoice.fromEstimateId === estimate.id) || null;
+}
+
 /* ---------- Invoices ---------- */
 function ProjectAddressField({ value, clientAddress, onChange, inputProps = {} }) {
   const canCopy = !!(clientAddress && clientAddress.trim()) && clientAddress !== value;
@@ -408,9 +469,27 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
   const [calcOpen, setCalcOpen] = useState2(false);
   const [mailOpen, setMailOpen] = useState2(false);
 
-  const inv = state.invoices.find((i) => i.id === selected) || state.invoices[0];
+  const invoices = [...(state.invoices || [])].sort((a, b) => {
+    const byDate = (b.date || "").localeCompare(a.date || "");
+    if (byDate) return byDate;
+    return (docNumberParts(b.number).seq || 0) - (docNumberParts(a.number).seq || 0);
+  });
+  const inv = invoices.find((i) => i.id === selected) || invoices[0];
   const client = inv ? state.clients.find((c) => c.id === inv.clientId) : null;
   const nowIso = () => new Date().toISOString();
+
+  React.useEffect(() => {
+    if (params?.focusId) setSelected(params.focusId);
+  }, [params?.focusId]);
+
+  const commitInvoice = (patched) => {
+    const conflict = findDocNumberConflict(state, patched.number, { kind: "invoice", id: inv?.id });
+    if (conflict && docNumberParts(patched.number).key !== docNumberParts(inv?.number).key) {
+      toast(`${patched.number} is already used by ${conflict.kind} ${conflict.number}.`);
+      return;
+    }
+    dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, patched) });
+  };
 
   const applyInvoicePatch = (currentInvoice, patchedInvoice) => {
     const prevStatus = currentInvoice.status || "draft";
@@ -506,7 +585,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
       toast("Add a client before creating an invoice.");
       return;
     }
-    const num = "INV-" + String(1 + state.invoices.filter((i) => i.number.startsWith("INV-")).length).padStart(4, "0");
+    const num = nextDocNumber(state, "INV-");
     const today = new Date();
     const due = new Date(today.getTime() + 30 * 86400000);
     const newInv = {
@@ -527,7 +606,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
     setMode("edit");
   };
 
-  if (!state.invoices.length) {
+  if (!invoices.length) {
     return (
       <>
         <div className="toolbar">
@@ -564,7 +643,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
         <div className="toolbar">
           <div className="left">
             <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-              {state.invoices.length} invoices
+              {invoices.length} invoices
             </span>
           </div>
           <div className="right">
@@ -599,14 +678,14 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
 
         <div className="two-col doc-two-col">
           <div className="list-card doc-controls-col">
-            {state.invoices.map((i) => {
+            {invoices.map((i) => {
               const c = state.clients.find((cl) => cl.id === i.clientId);
               const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
               return (
                 <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
                   <span className="name">{c?.name || "Unknown client"}</span>
                   <span className="amount">{fmtMoney(total)}</span>
-                  <span className="meta">{i.number} · {fmtDate(i.date)}</span>
+                  <span className="meta">{i.number} · {fmtDate(i.date)}{i.estimateNumber ? ` · ${i.estimateNumber}` : ""}</span>
                   <select
                     className={"status status-select " + i.status}
                     value={i.status}
@@ -665,7 +744,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
                 <InvoiceEditor
                 invoice={inv}
                 clients={state.clients}
-                onChange={(patched) => dispatch({ type: "UPDATE_INVOICE", invoice: applyInvoicePatch(inv, patched) })} />
+                onChange={commitInvoice} />
               </div>
             ) : null}
           </div>
@@ -765,10 +844,7 @@ function EstimateEditor({ estimate, clients, onChange }) {
         <div className="field">
           <label>Status</label>
           <select className="select" value={estimate.status || "draft"} onChange={(e) => update({ status: e.target.value })}>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="accepted">Accepted</option>
-            <option value="declined">Declined</option>
+            {ESTIMATE_STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
       </div>
@@ -943,7 +1019,7 @@ function EstimateEditor({ estimate, clients, onChange }) {
   );
 }
 
-function EstimatesScreen({ state, dispatch, business, toast, params }) {
+function EstimatesScreen({ state, dispatch, business, toast, params, go }) {
   const [selected, setSelected] = useState2(params?.focusId || null);
   const [mode, setMode] = useState2("preview");
   const estimatePreviewRef = useRef(null);
@@ -1014,7 +1090,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
   };
 
   const createNew = () => {
-    const num = "EST-" + String(1 + estimates.filter((e) => (e.number || "").startsWith("EST-")).length).padStart(4, "0");
+    const num = nextDocNumber(state, "EST-");
     const today = new Date();
     const valid = new Date(today.getTime() + 30 * 86400000);
     const newEst = {
@@ -1038,6 +1114,85 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
     dispatch({ type: "ADD_ESTIMATE", estimate: newEst });
     setSelected(newEst.id);
     setMode("edit");
+  };
+
+  const commitEstimate = (patched) => {
+    const conflict = findDocNumberConflict(state, patched.number, { kind: "estimate", id: patched.id });
+    if (conflict && docNumberParts(patched.number).key !== docNumberParts((estimates.find((e) => e.id === patched.id) || {}).number).key) {
+      toast(`${patched.number} is already used by ${conflict.kind} ${conflict.number}.`);
+      return;
+    }
+    dispatch({ type: "UPDATE_ESTIMATE", estimate: patched });
+  };
+
+  const convertEstimate = (estimate) => {
+    const source = estimate || est;
+    if (!source || !estimateReadyForInvoice(source)) return;
+    const existing = linkedInvoiceForEstimate(state, source);
+    if (existing) {
+      if (go) go("invoices", { focusId: existing.id });
+      return;
+    }
+    const clients = state.clients || [];
+    let clientId = source.clientId && clients.some((c) => c.id === source.clientId) ? source.clientId : "";
+    if (!clientId) {
+      const name = (source.clientCompany || source.clientName || "").trim();
+      const email = (source.clientEmail || "").trim().toLowerCase();
+      const found = clients.find((c) =>
+        (email && (c.email || "").trim().toLowerCase() === email) ||
+        (name && (c.name || "").trim().toLowerCase() === name.toLowerCase())
+      );
+      if (found) clientId = found.id;
+    }
+    if (!clientId) {
+      const name = (source.clientCompany || source.clientName || "").trim();
+      if (!name) {
+        toast("Add a client name before creating an invoice.");
+        return;
+      }
+      clientId = "c" + Date.now();
+      dispatch({
+        type: "ADD_CLIENT",
+        client: {
+          id: clientId,
+          name,
+          contact: source.clientName || "",
+          email: source.clientEmail || "",
+          phone: source.clientPhone || "",
+          address: source.clientAddress || "",
+          notes: "",
+        },
+      });
+    }
+    const issued = source.date || new Date().toISOString().slice(0, 10);
+    const dueFrom = (iso) => {
+      const [year, month, day] = String(iso || "").split("-").map(Number);
+      const date = new Date(year || 2000, (month || 1) - 1, day || 1);
+      date.setDate(date.getDate() + 30);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    };
+    const due = source.validUntil || dueFrom(issued);
+    const fromNote = source.number ? `Converted from ${source.number}.` : "";
+    const invoice = {
+      id: "i" + Date.now(),
+      number: nextDocNumber(state, "INV-"),
+      clientId,
+      projectAddress: source.projectAddress || "",
+      date: issued,
+      due,
+      status: "draft",
+      items: (source.items || []).map((item) => ({ ...item })),
+      taxRate: source.taxRate || 0,
+      notes: [source.notes, fromNote].filter(Boolean).join("\n"),
+      fromEstimateId: source.id,
+      estimateNumber: source.number || "",
+      createdAt: new Date().toISOString(),
+      statusHistory: [],
+    };
+    dispatch({ type: "ADD_INVOICE", invoice });
+    dispatch({ type: "UPDATE_ESTIMATE", estimate: { ...source, invoiceId: invoice.id } });
+    toast(`${source.number} added to invoices as ${invoice.number}.`);
+    if (go) go("invoices", { focusId: invoice.id });
   };
 
   if (!estimates.length) {
@@ -1085,6 +1240,10 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
                   Edit
                 </button>
               </div>
+              {est && estimateReadyForInvoice(est) &&
+              <button className="btn" onClick={() => convertEstimate(est)}>
+                <Icon name="invoice" size={13} /> {linkedInvoiceForEstimate(state, est) ? "Open invoice" : "Create invoice"}
+              </button>}
               <button className="btn primary" onClick={downloadCurrentEstimatePdf}>
                 <Icon name="download" size={13} /> Download PDF
               </button>
@@ -1110,13 +1269,11 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
                     value={e.status || "draft"}
                     onClick={(ev) => ev.stopPropagation()}
                     onChange={(ev) => {
+                      setSelected(e.id);
                       dispatch({ type: "UPDATE_ESTIMATE", estimate: { ...e, status: ev.target.value } });
                       toast(`${e.number} → ${ev.target.value}`);
                     }}>
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="accepted">Accepted</option>
-                    <option value="declined">Declined</option>
+                    {ESTIMATE_STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </div>
               );
@@ -1137,6 +1294,10 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
                   Edit
                 </button>
               </div>
+              {est && estimateReadyForInvoice(est) &&
+              <button className="btn" onClick={() => convertEstimate(est)}>
+                <Icon name="invoice" size={13} /> {linkedInvoiceForEstimate(state, est) ? "Open invoice" : "Create invoice"}
+              </button>}
               <button className="btn primary" onClick={downloadCurrentEstimatePdf}>
                 <Icon name="download" size={13} /> Download PDF
               </button>
@@ -1154,7 +1315,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params }) {
                 <EstimateEditor
                   estimate={est}
                   clients={state.clients}
-                  onChange={(patched) => dispatch({ type: "UPDATE_ESTIMATE", estimate: patched })}
+                  onChange={commitEstimate}
                 />
               </div>
             ) : null}
@@ -1261,7 +1422,9 @@ function BillsScreen({ state, dispatch, toast, userId, params }) {
   };
 
   const openNew = () => {
-    reset();
+    setForm({ ...blank, number: nextDocNumber(state, "BILL-") });
+    setReadMsg("");
+    setReadingAmount(false);
     setDrawer(true);
   };
 
@@ -1314,10 +1477,16 @@ function BillsScreen({ state, dispatch, toast, userId, params }) {
       toast("Vendor and amount are required");
       return;
     }
+    const number = form.number.trim() || nextDocNumber(state, "BILL-");
+    const conflict = findDocNumberConflict(state, number);
+    if (conflict) {
+      toast(`${number} is already used by ${conflict.kind} ${conflict.number}.`);
+      return;
+    }
     const bill = {
       id: "b" + Date.now(),
       vendor: form.vendor.trim(),
-      number: form.number.trim(),
+      number,
       issueDate: form.issueDate,
       dueDate: form.dueDate,
       status: form.status,
@@ -1446,7 +1615,7 @@ function BillsScreen({ state, dispatch, toast, userId, params }) {
               <div className="row-2">
                 <div className="field">
                   <label>Bill number</label>
-                  <input className="input mono" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} placeholder="INV-1234" />
+                  <input className="input mono" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} placeholder="BILL-0001" />
                 </div>
                 <div className="field">
                   <label>Amount</label>

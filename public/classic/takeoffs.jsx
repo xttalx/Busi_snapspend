@@ -852,7 +852,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
     const today = new Date();
     const est = {
       id: "est" + Date.now(),
-      number: "EST-" + String(1 + estimates.filter((e) => (e.number || "").startsWith("EST-")).length).padStart(4, "0"),
+      number: nextDocNumber(state, "EST-"),
       clientId: "",
       clientName: "",
       clientCompany: "",

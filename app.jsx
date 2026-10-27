@@ -873,7 +873,7 @@ function App() {
   if (route === "invoices") screen = <InvoicesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} billingStatus={billingStatus} refreshBilling={refreshBilling} />;else
   if (route === "bills") screen = <BillsScreen state={state} dispatch={persistDispatch} toast={toast} userId={userId} params={params} />;else
   if (route === "paystubs") screen = <PaystubsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} billingStatus={billingStatus} refreshBilling={refreshBilling} />;else
-  if (route === "estimates") screen = <EstimatesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} />;else
+  if (route === "estimates") screen = <EstimatesScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} params={params} go={go} />;else
   if (route === "takeoffs") screen = <TakeoffsScreen state={state} dispatch={persistDispatch} business={userBusiness} toast={toast} go={go} />;else
   if (route === "employees") screen = <EmployeesScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
   if (route === "clients") screen = <ClientsScreen state={state} dispatch={persistDispatch} toast={toast} go={go} params={params} />;else
