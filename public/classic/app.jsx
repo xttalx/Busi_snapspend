@@ -9,7 +9,7 @@ const NAV = [
   { id: "bills", label: "Bills", icon: "receipt" },
   { id: "paystubs", label: "Paystubs", icon: "paystub" },
   { id: "estimates", label: "Estimates", icon: "estimate" },
-  { id: "takeoffs", label: "Project calculators", icon: "ruler" }]
+  { id: "takeoffs", label: "Pro calculator", icon: "ruler" }]
 },
 { group: "People", items: [
   { id: "employees", label: "Employees", icon: "employees" },
@@ -29,7 +29,7 @@ const PAGE_META = {
   bills: { kicker: "Payables", title: "Bills" },
   paystubs: { kicker: "Payroll", title: "Pay statements" },
   estimates: { kicker: "Quotes", title: "Estimates" },
-  takeoffs: { kicker: "Takeoffs", title: "Project calculators" },
+  takeoffs: { kicker: "Estimating", title: "Pro calculator" },
   employees: { kicker: "People", title: "Your team" },
   clients: { kicker: "Registry", title: "Business clients" },
   reports: { kicker: "Insights", title: "Reports" },

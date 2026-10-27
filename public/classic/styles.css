@@ -4259,6 +4259,45 @@ body { background: var(--canvas); color: var(--ink); }
 .tk-segmented { display: flex; width: 100%; }
 .tk-segmented .btn { flex: 1 1 0; }
 .tk-trades { flex-wrap: wrap; }
+.tk-scopes { display: flex; flex-wrap: wrap; gap: 8px; }
+.tk-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tk-scope.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.tk-block {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--paper);
+}
+.tk-block-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.tk-block-head h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.tk-block-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tk-table tr.tk-section td {
+  padding-top: 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: none;
+}
 .tk-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4413,7 +4452,7 @@ body { background: var(--canvas); color: var(--ink); }
 
 @media (max-width: 640px) {
   .tk-form, .tk-results { padding: 16px; }
-  .tk-fields { grid-template-columns: minmax(0, 1fr); }
+  .tk-fields, .tk-block-grid { grid-template-columns: minmax(0, 1fr); }
   .tk-summary { grid-template-columns: minmax(0, 1fr); }
   .tk-summary-cell + .tk-summary-cell { border-left: none; border-top: 1px solid var(--rule); }
   .tk-total { align-items: flex-start; }
