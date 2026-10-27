@@ -42,9 +42,7 @@ const TK_SHELF = {
     currency: "CAD",
     source: "Home Depot Canada",
     rates: {
-      stud2x4_precut: 3.33,
       stud2x4_8: 6.58,
-      stud2x4_9: 3.98,
       stud2x6_8: 14.33,
       osb716: 72.98,
       drywall_half_4x8: 16.52,
@@ -61,7 +59,6 @@ const TK_SHELF = {
     currency: "USD",
     source: "The Home Depot",
     rates: {
-      stud2x4_precut: 4.15,
       stud2x4_8: 4.25,
       drywall_half_4x8: 16.68,
       drywall_half_4x10: 20.85,
@@ -85,12 +82,28 @@ function tkShelf(book, key) {
   return rate == null ? null : rate;
 }
 
-function tkStudShelf(book, is26, height) {
-  const h = Math.ceil(Number(height) || 8);
-  if (is26) return h <= 8 ? tkShelf(book, "stud2x6_8") : null;
-  if (h <= 8) return tkShelf(book, "stud2x4_precut");
-  if (h <= 9) return tkShelf(book, "stud2x4_9") ?? tkShelf(book, "stud2x4_8");
-  return null;
+function tkStudChoice(is26, height) {
+  const need = Math.max(1, Math.ceil(Number(height) || 8));
+  const stock = [8, 9, 10, 12, 14, 16];
+  const feet = stock.find((len) => len >= need) || need;
+  const size = is26 ? "2x6" : "2x4";
+  return {
+    feet,
+    key: stock.includes(feet) ? `${is26 ? "stud2x6" : "stud2x4"}_${feet}` : null,
+    label: `${size} stud ${feet}'`,
+  };
+}
+
+function tkSheetChoice(selected, height) {
+  const need = Math.max(1, Math.ceil(Number(height) || 8));
+  const sizes = [
+    { id: "4x8", feet: 8, area: 32 },
+    { id: "4x10", feet: 10, area: 40 },
+    { id: "4x12", feet: 12, area: 48 },
+  ];
+  const picked = sizes.find((s) => s.id === selected) || sizes[0];
+  if (picked.feet >= need) return picked;
+  return sizes.find((s) => s.feet >= need) || { id: null, feet: need, area: 4 * need };
 }
 
 function tkDrywallShelf(book, thickness, sheetArea) {
@@ -373,10 +386,10 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
       openings += openN;
       const studs = tkUp((len * 12) / spacing) + 1 + openN * 3;
       rawStuds += studs;
-      const label = runH <= 8 ? `${i.framingSize} precut stud 92-5/8"` : `${i.framingSize} stud ${Math.ceil(runH)}'`;
-      const prev = studsByLabel.get(label) || { qty: 0, H: runH };
+      const choice = tkStudChoice(is26, runH);
+      const prev = studsByLabel.get(choice.label) || { qty: 0, choice };
       prev.qty += studs;
-      studsByLabel.set(label, prev);
+      studsByLabel.set(choice.label, prev);
       plateLf += len * 3;
       headerLf += openN * 8;
       if (i.sheathing) sheathSf += len * runH;
@@ -386,18 +399,19 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     });
     const studTotal = tkUp(rawStuds * w);
     const cornerStuds = tkUp(corners * 2 * w);
-    const tallest = [...studsByLabel.entries()].sort((a, b) => b[1].H - a[1].H)[0];
+    const tallest = [...studsByLabel.entries()].sort((a, b) => b[1].choice.feet - a[1].choice.feet)[0];
     if (tallest) tallest[1].qty += corners * 2;
     let placed = 0;
     [...studsByLabel.entries()].forEach(([label, info], index, all) => {
       const share = index === all.length - 1 ? studTotal - placed : tkUp((info.qty / rawStuds) * studTotal);
       placed += share;
-      const studRate = tkStudShelf(book, is26, info.H);
-      price("framing", { key: "studs-" + Math.ceil(info.H), item: label, qty: share, unit: "pcs", rate: studRate, source: shelfSource(studRate) });
+      const studRate = tkShelf(book, info.choice.key);
+      price("framing", { key: "studs-" + info.choice.feet, item: label, qty: share, unit: "pcs", rate: studRate, source: shelfSource(studRate) });
     });
     if (!studsByLabel.size && cornerStuds > 0) {
-      const studRate = tkStudShelf(book, is26, H);
-      price("framing", { key: "studs", item: `${i.framingSize} studs`, qty: studTotal, unit: "pcs", rate: studRate, source: shelfSource(studRate) });
+      const choice = tkStudChoice(is26, H);
+      const studRate = tkShelf(book, choice.key);
+      price("framing", { key: "studs-" + choice.feet, item: choice.label, qty: studTotal, unit: "pcs", rate: studRate, source: shelfSource(studRate) });
     }
     price("framing", { key: "plates", item: `${i.framingSize} plate stock 16' (bottom + double top)`, qty: tkUp((plateLf / 16) * w), unit: "pcs", rate: null });
     if (openings > 0) price("framing", { key: "headers", item: "2×10 header stock", qty: tkUp(headerLf * w), unit: "lin ft", rate: null });
@@ -413,11 +427,12 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
   }
 
   if (on.has("drywall") && board > 0) {
-    const sheetArea = { "4x8": 32, "4x10": 40, "4x12": 48 }[i.sheet] || 32;
-    const sheetPrice = tkDrywallShelf(book, i.thickness, sheetArea);
+    const sheet = tkSheetChoice(i.sheet, H);
+    const sheetPrice = sheet.id ? tkDrywallShelf(book, i.thickness, sheet.area) : null;
     const boardLabel = { "5/8": "5/8\" Type X", "1/2mr": "1/2\" moisture-resistant" }[i.thickness] || "1/2\" regular";
-    const sheets = tkUp((board / sheetArea) * w);
-    price("drywall", { key: "sheets", item: `Drywall ${boardLabel} ${String(i.sheet).replace("x", "' × ")}'`, qty: sheets, unit: "sheets", rate: sheetPrice, source: shelfSource(sheetPrice) });
+    const sheetName = sheet.id ? `${String(sheet.id).replace("x", "' × ")}'` : `${sheet.feet}' long`;
+    const sheets = tkUp((board / sheet.area) * w);
+    price("drywall", { key: "sheets", item: `Drywall ${boardLabel} ${sheetName}`, qty: sheets, unit: "sheets", rate: sheetPrice, source: shelfSource(sheetPrice) });
     price("drywall", { key: "screws", item: "Drywall screws 1-1/4\" (box of 1,000)", qty: Math.max(1, tkUp((sheets * 32) / 1000)), unit: "boxes", rate: null });
     if (type === "renovation") price("drywall", { key: "demo", item: "Demo & dispose existing drywall", qty: tkUp(wall), unit: "sq ft", rate: 1.1 });
     addSection({ id: "drywall", label: "Drywall installation", hours: tkHours((board / 55) * factor), rate: laborRateFor("drywall"), qty: board, unit: "sq ft" });
@@ -431,7 +446,7 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const mud = shelf("mud_box");
     price("mud", { key: "mud", item: `Joint compound, level ${level} finish`, qty: tkUp(board / coverage), unit: "boxes", rate: mud, source: shelfSource(mud) });
     price("mud", { key: "tape", item: "Paper joint tape 500'", qty: Math.max(1, tkUp((board * 0.38) / 500)), unit: "rolls", rate: null });
-    if (beadCorners > 0) price("mud", { key: "bead", item: "Corner bead 8'", qty: tkUp(((beadCorners * H) / 8) * w), unit: "pcs", rate: null });
+    if (beadCorners > 0) price("mud", { key: "bead", item: `Corner bead ${Math.max(8, Math.ceil(H))}'`, qty: tkUp(beadCorners * w), unit: "pcs", rate: null });
     price("mud", { key: "sand", item: "Sanding screens & pole", qty: Math.max(1, tkUp(board / 800)), unit: "kits", rate: null });
     if (type === "addition") price("mud", { key: "tiein", item: "Tie-in & feather at existing walls", qty: 1, unit: "allowance", rate: 150 });
     addSection({ id: "mud", label: "Mudding", hours: tkHours((board / pace) * factor), rate: laborRateFor("mud"), qty: board, unit: "sq ft" });
@@ -819,6 +834,22 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
   const setLabor = (id, value) => setForm((f) => ({ ...f, laborRates: { ...f.laborRates, [id]: value } }));
   const setHours = (id, value) => setForm((f) => ({ ...f, laborHours: { ...(f.laborHours || {}), [id]: value } }));
   const setRate = (key, value) => setForm((f) => ({ ...f, rates: { ...f.rates, [key]: value } }));
+  const missingValue = (m) => {
+    if (m.id.endsWith(":labor-hours")) return (form.laborHours || {})[m.id.slice(0, -":labor-hours".length)] ?? "";
+    if (m.id.endsWith(":labor-rate")) {
+      const id = m.id.slice(0, -":labor-rate".length);
+      const key = id === "masonry" && form.inputs.masonryType === "block" ? "masonryBlock" : id;
+      return form.laborRates[key] ?? "";
+    }
+    return form.rates[m.id] ?? "";
+  };
+  const setMissing = (m, value) => {
+    if (m.id.endsWith(":labor-hours")) setHours(m.id.slice(0, -":labor-hours".length), value);
+    else if (m.id.endsWith(":labor-rate")) {
+      const id = m.id.slice(0, -":labor-rate".length);
+      setLabor(id === "masonry" && form.inputs.masonryType === "block" ? "masonryBlock" : id, value);
+    } else setRate(m.id, value);
+  };
 
   const switchType = (projectType) => setForm((f) => ({
     ...f,
@@ -1283,7 +1314,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
             <div className="tk-bid-row"><span>Profit ({result.profitPct}%)</span><span>{fmtMoney(result.profit)}</span></div>
             <div className="tk-bid-row is-grand"><span>Bid total</span><span>{fmtMoney(result.bid)}</span></div>
           </div>
-          <p className="tk-help">{tkShelfBook(business?.country).unavailable ? `No Home Depot price list for ${business?.country || "this country"}. Material lines stay blank until you enter a price.` : `Material prices are ${tkShelfBook(business?.country).source} shelf prices in ${tkShelfBook(business?.country).currency}. A line with no listed price stays blank.`} Quantities are rounded up. Labor hours are rounded up to the next half hour. Confirm every price before you send the estimate.</p>
+          <p className="tk-help">{tkShelfBook(business?.country).unavailable ? `No Home Depot price list for ${business?.country || "this country"}. ` : `Material prices are ${tkShelfBook(business?.country).source} shelf prices in ${tkShelfBook(business?.country).currency}, matched to the wall height. `}If a length has no listed price, type it in the box that opens. Quantities are rounded up. Labor hours are rounded up to the next half hour.</p>
 
           <div className="tk-actions">
             <button type="button" className="btn" onClick={startNew}>New bid</button>
@@ -1342,25 +1373,40 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
         </div>
         }
       </section>
-      {priceAlert &&
+      {priceAlert && result.missing.length > 0 &&
       <div className="tk-price-alert" role="alertdialog" aria-labelledby="tk-price-alert-title" aria-modal="true">
         <div className="modal-scrim" onClick={() => setPriceAlert(null)}></div>
         <div className="modal">
           <div className="modal-head">
             <div>
               <div className="kicker">Price check</div>
-              <h3 id="tk-price-alert-title">Some prices were not found</h3>
-              <p className="modal-sub">No published material or labor figure was found for the lines below. Enter a price on the bid. Those lines stay out of the total until you do.</p>
+              <h3 id="tk-price-alert-title">Enter the missing prices</h3>
+              <p className="modal-sub">No shelf price was found for the length these lines need. Type a price for each one. A line stays out of the total until you do.</p>
             </div>
             <button type="button" className="iconbtn" onClick={() => setPriceAlert(null)} aria-label="Close"><Icon name="close" /></button>
           </div>
           <div className="modal-body">
             <ul className="tk-missing-list">
-              {priceAlert.map((m) => <li key={m.id}><b>{m.label}</b> · {m.kind}</li>)}
+              {result.missing.map((m) =>
+              <li key={m.id}>
+                <label className="tk-missing-row">
+                  <span><b>{m.label}</b> · {m.kind}</span>
+                  <input
+                    className="input tk-rate is-missing"
+                    type="number"
+                    min="0"
+                    step={m.id.endsWith(":labor-hours") ? "0.5" : "0.01"}
+                    placeholder={m.id.endsWith(":labor-hours") ? "Hours" : "Price"}
+                    aria-label={`${m.id.endsWith(":labor-hours") ? "Hours" : "Price"} for ${m.label}`}
+                    value={missingValue(m)}
+                    onChange={(e) => setMissing(m, e.target.value)} />
+                </label>
+              </li>
+              )}
             </ul>
           </div>
           <div className="modal-foot">
-            <button type="button" className="btn primary" onClick={() => setPriceAlert(null)}>Enter prices</button>
+            <button type="button" className="btn primary" onClick={() => setPriceAlert(null)}>Done</button>
           </div>
         </div>
       </div>

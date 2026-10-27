@@ -4387,7 +4387,9 @@ body { background: var(--canvas); color: var(--ink); }
 .tk-rate { width: 96px; padding: 6px 8px; text-align: right; box-shadow: none; }
 .tk-rate.is-missing, .input.is-missing { border-color: #b8442a; background: #fdf6f3; }
 .tk-missing { color: #b8442a; font-weight: 600; }
-.tk-missing-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.tk-missing-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.tk-missing-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tk-missing-row .input { width: 128px; flex: none; }
 .tk-price-alert .modal-scrim { z-index: 120; }
 .tk-price-alert .modal { z-index: 121; }
 .tk-bid {
