@@ -194,7 +194,7 @@ function Dashboard({ state, go }) {
 
   const revenue = (k) => invoices
     .filter(i => i.status === "paid" && i.date.startsWith(k))
-    .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
+    .reduce((s, i) => s + docTaxTotals(i).total, 0);
 
   const directExpensesIn = (k) =>
     expenses.filter((e) => (e.date || "").startsWith(k)).reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -242,7 +242,7 @@ function Dashboard({ state, go }) {
   bills.filter((b) => (b.issueDate || "").startsWith(monthKey)).length;
 
   const outstanding = invoices.filter(i => i.status === "due" || i.status === "overdue")
-    .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
+    .reduce((s, i) => s + docTaxTotals(i).total, 0);
 
   const paidBillRows = (bills || []).filter((b) => (b.status || "").toLowerCase() === "paid").map(paidBillAsExpense);
   const recent = [...expenses.map((e) => ({ ...e, isBill: false })), ...paidBillRows].
@@ -377,7 +377,7 @@ function Dashboard({ state, go }) {
               <ul className="dash-list">
                 {recentInvoices.map((inv) => {
                   const c = clients.find((cl) => cl.id === inv.clientId);
-                  const total = inv.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (inv.taxRate || 0));
+                  const total = docTaxTotals(inv).total;
                   return (
                     <li key={inv.id}>
                       <button type="button" className="dash-row" onClick={() => go("invoices", { focusId: inv.id })}>

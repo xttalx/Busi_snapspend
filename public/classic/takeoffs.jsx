@@ -599,9 +599,11 @@ function tkEstimateItems(calcs) {
       sub: [tkScopeById(r.scope)?.label || TK_LEGACY[c.trade], c.name, r.unit].filter(Boolean).join(" · "),
       qty: r.qty,
       rate: r.rate,
+      kind: "material",
     }));
     const labor = (c.sections || []).filter((s) => s.hours > 0 && s.rate != null).map((s) => ({
       desc: `Labor — ${s.label}`,
+      kind: "labor",
       sub: [c.name, s.laborUnit === "sq ft"
         ? `${tkFmt(s.hours)} sq ft @ ${fmtMoney(s.rate)}/sq ft`
         : `${tkFmt(s.hours, 1)} hrs @ ${fmtMoney(s.rate)}/hr`].filter(Boolean).join(" · "),
@@ -610,6 +612,7 @@ function tkEstimateItems(calcs) {
     }));
     if (!labor.length && c.laborHours > 0) {
       labor.push({
+        kind: "labor",
         desc: `Labor — ${TK_LEGACY[c.trade] || "Project"}`,
         sub: `${tkFmt(c.laborHours, 1)} hrs @ ${fmtMoney(c.laborRate)}/hr`,
         qty: c.laborHours,
@@ -626,8 +629,8 @@ function tkEstimateItems(calcs) {
   };
   const ohPct = samePct("overheadPct");
   const pPct = samePct("profitPct");
-  if (overhead > 0) lines.push({ desc: ohPct == null ? "Overhead" : `Overhead (${ohPct}%)`, sub: "On materials and labor", qty: 1, rate: overhead });
-  if (profit > 0) lines.push({ desc: pPct == null ? "Profit" : `Profit (${pPct}%)`, sub: "On direct cost and overhead", qty: 1, rate: profit });
+  if (overhead > 0) lines.push({ kind: "other", desc: ohPct == null ? "Overhead" : `Overhead (${ohPct}%)`, sub: "On materials and labor", qty: 1, rate: overhead });
+  if (profit > 0) lines.push({ kind: "other", desc: pPct == null ? "Profit" : `Profit (${pPct}%)`, sub: "On direct cost and overhead", qty: 1, rate: profit });
   return lines;
 }
 
@@ -865,6 +868,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
       status: "draft",
       items,
       taxRate: Number(business?.taxRate) >= 0 ? Number(business.taxRate) : 0.05,
+      pstRate: 0,
       notes: "Bid includes the trades turned on for this project, plus labor, overhead and profit. Confirm every price and hourly rate before sending. Lines without a published price are omitted until a price is entered.",
       drawing: null,
       createdAt: today.toISOString(),

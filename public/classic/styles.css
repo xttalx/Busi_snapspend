@@ -4074,6 +4074,16 @@ body { background: var(--canvas); color: var(--ink); }
 }
 .line-items .lbl { font-family: var(--sans); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
 .line-items .calc { font-family: var(--sans); }
+.line-material {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.line-material input { margin: 0; }
 
 @media (max-width: 1100px) {
   .app { align-content: start; }

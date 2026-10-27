@@ -85,6 +85,17 @@ function ProjectAddressField({ value, clientAddress, onChange, inputProps = {} }
     </div>);
 }
 
+function MaterialLineToggle({ item, onChange }) {
+  const manual = item.material === true || item.material === false;
+  const on = docLineIsMaterial(item);
+  return (
+    <label className="line-material">
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />
+      <span>{on ? "Material" : "Not material"}{!manual && on ? " · detected" : ""}</span>
+    </label>
+  );
+}
+
 function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAutofill = false }) {
   const update = (patch) => onChange({ ...invoice, ...patch });
   const updateItem = (i, patch) => {
@@ -198,6 +209,7 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAu
               />
               <span className="calc">{fmtMoney(it.qty * it.rate)}</span>
               <button className="iconbtn" onClick={() => removeItem(i)} title="Remove"><Icon name="close" size={12} /></button>
+              <MaterialLineToggle item={it} onChange={(material) => updateItem(i, { material })} />
             </React.Fragment>
           )}
         </div>
@@ -207,16 +219,31 @@ function InvoiceEditor({ invoice, clients, onChange, fieldErrors = {}, disableAu
       </div>
 
       <div className="row-2">
-        <div className="field">
-          <label>Tax rate (%)</label>
-          <input
-            className="input mono"
-            type="number"
-            step="0.01"
-            {...ac}
-            value={(invoice.taxRate || 0) * 100}
-            onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
-          />
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div className="field">
+            <label>GST (%)</label>
+            <input
+              className="input mono"
+              type="number"
+              step="0.01"
+              {...ac}
+              value={(invoice.taxRate || 0) * 100}
+              onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
+            />
+          </div>
+          <div className="field">
+            <label>PST (%)</label>
+            <input
+              className="input mono"
+              type="number"
+              step="0.01"
+              min="0"
+              {...ac}
+              value={(invoice.pstRate || 0) * 100}
+              onChange={(e) => update({ pstRate: Number(e.target.value) / 100 })}
+            />
+            <span className="help">Charged on detected materials ({fmtMoney(docTaxTotals(invoice).material)}).</span>
+          </div>
         </div>
         <div className="field">
           <label>Currency</label>
@@ -597,6 +624,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
       status: "draft",
       items: [{ desc: "New line item", sub: "", qty: 1, rate: 0 }],
       taxRate: 0,
+      pstRate: 0,
       notes: "",
       createdAt: nowIso(),
       statusHistory: [],
@@ -680,7 +708,7 @@ function InvoicesScreen({ state, dispatch, business, toast, params, billingStatu
           <div className="list-card doc-controls-col">
             {invoices.map((i) => {
               const c = state.clients.find((cl) => cl.id === i.clientId);
-              const total = i.items.reduce((s, it) => s + it.qty * it.rate, 0) * (1 + (i.taxRate || 0));
+              const total = docTaxTotals(i).total;
               return (
                 <div key={i.id} className={"row " + (i.id === selected ? "active" : "")} onClick={() => setSelected(i.id)}>
                   <span className="name">{c?.name || "Unknown client"}</span>
@@ -985,6 +1013,7 @@ function EstimateEditor({ estimate, clients, onChange }) {
               />
               <span className="calc">{fmtMoney(Number(it.qty || 0) * Number(it.rate || 0))}</span>
               <button className="iconbtn" onClick={() => removeItem(i)} title="Remove"><Icon name="close" size={12} /></button>
+              <MaterialLineToggle item={it} onChange={(material) => updateItem(i, { material })} />
             </React.Fragment>
           )}
         </div>
@@ -994,16 +1023,30 @@ function EstimateEditor({ estimate, clients, onChange }) {
       </div>
 
       <div className="row-2">
-        <div className="field">
-          <label>GST (%)</label>
-          <input
-            className="input mono"
-            type="number"
-            step="0.01"
-            value={+((estimate.taxRate || 0) * 100).toFixed(3)}
-            onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
-          />
-          <span className="help">Sales tax / GST applied to the estimate total.</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div className="field">
+            <label>GST (%)</label>
+            <input
+              className="input mono"
+              type="number"
+              step="0.01"
+              value={+((estimate.taxRate || 0) * 100).toFixed(3)}
+              onChange={(e) => update({ taxRate: Number(e.target.value) / 100 })}
+            />
+            <span className="help">GST applies to the full estimate.</span>
+          </div>
+          <div className="field">
+            <label>PST (%)</label>
+            <input
+              className="input mono"
+              type="number"
+              step="0.01"
+              min="0"
+              value={+((estimate.pstRate || 0) * 100).toFixed(3)}
+              onChange={(e) => update({ pstRate: Number(e.target.value) / 100 })}
+            />
+            <span className="help">Charged on detected materials ({fmtMoney(docTaxTotals(estimate).material)}).</span>
+          </div>
         </div>
         <div className="field">
           <label>Notes / terms</label>
@@ -1107,6 +1150,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params, go }) {
       status: "draft",
       items: [{ desc: "New work item", sub: "", qty: 1, rate: 0 }],
       taxRate: Number(business?.taxRate) >= 0 ? Number(business.taxRate) : 0.05,
+      pstRate: 0,
       notes: "",
       drawing: null,
       createdAt: new Date().toISOString(),
@@ -1183,6 +1227,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params, go }) {
       status: "draft",
       items: (source.items || []).map((item) => ({ ...item })),
       taxRate: source.taxRate || 0,
+      pstRate: source.pstRate || 0,
       notes: [source.notes, fromNote].filter(Boolean).join("\n"),
       fromEstimateId: source.id,
       estimateNumber: source.number || "",
@@ -1257,7 +1302,7 @@ function EstimatesScreen({ state, dispatch, business, toast, params, go }) {
         <div className="two-col doc-two-col">
           <div className="list-card doc-controls-col">
             {estimates.map((e) => {
-              const total = (e.items || []).reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0) * (1 + (e.taxRate || 0));
+              const total = docTaxTotals(e).total;
               const label = e.clientCompany || e.clientName || "Untitled estimate";
               return (
                 <div key={e.id} className={"row " + (e.id === (selected || est?.id) ? "active" : "")} onClick={() => setSelected(e.id)}>
@@ -2910,7 +2955,7 @@ function ClientsScreen({ state, dispatch, toast, go, params }) {
     const invs = state.invoices.filter((i) => i.clientId === clientId);
     const open = invs.filter((i) => i.status === "due" || i.status === "overdue");
     const outstanding = open.reduce((s, i) =>
-      s + i.items.reduce((a, it) => a + it.qty * it.rate, 0) * (1 + (i.taxRate || 0)), 0);
+      s + docTaxTotals(i).total, 0);
     return { total: invs.length, outstanding };
   };
 

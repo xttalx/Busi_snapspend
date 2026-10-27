@@ -15,6 +15,35 @@ const fmtDate = (iso) => {
 window.fmtMoney = fmtMoney;
 window.fmtDate = fmtDate;
 
+function docLineAmount(item) {
+  return (Number(item?.qty) || 0) * (Number(item?.rate) || 0);
+}
+
+function docLineIsMaterial(item) {
+  if (!item) return false;
+  if (item.material === true || item.material === false) return item.material;
+  if (item.kind === "material") return true;
+  if (item.kind === "labor" || item.kind === "other") return false;
+  const desc = String(item.desc || "");
+  if (/^\s*(labor|labour|install|installation|overhead|profit)\b/i.test(desc)) return false;
+  const text = `${desc} ${item.sub || ""}`;
+  return /\b(studs?|plates?|headers?|osb|sheathing|nails?|anchors?|drywall|gypsum|boards?|compound|tape|beads?|paints?|primer|gallons?|flooring|vinyl|laminate|hardwood|tiles?|carpet|underlayment|thinset|grout|spacers?|baseboards?|transitions?|ceiling|acoustic|tees?|hangers?|wires?|cabinets?|receptacles?|outlets?|switches|cables?|boxes|fixtures?|pipes?|drains?|concrete|cement|gravel|mesh|forms?|bricks?|blocks?|masonry|lumber|sheets?|bags?|materials?|screws?|adhesive|caulk|trim|mud)\b/i.test(text);
+}
+
+function docTaxTotals(doc) {
+  const items = doc?.items || [];
+  const subtotal = items.reduce((sum, item) => sum + docLineAmount(item), 0);
+  const material = items.reduce((sum, item) => sum + (docLineIsMaterial(item) ? docLineAmount(item) : 0), 0);
+  const gstRate = Number(doc?.taxRate) || 0;
+  const pstRate = Number(doc?.pstRate) || 0;
+  const gst = subtotal * gstRate;
+  const pst = material * pstRate;
+  return { subtotal, material, gstRate, pstRate, gst, pst, total: subtotal + gst + pst };
+}
+
+window.docLineIsMaterial = docLineIsMaterial;
+window.docTaxTotals = docTaxTotals;
+
 function pdfCaptureTarget(element) {
   if (!element) return null;
   return element.querySelector?.(".doc-shell") || element;
@@ -168,10 +197,7 @@ async function downloadEstimatePdf({ estimate, element, fast = false }) {
 function InvoiceDocument({ invoice, client, business }) {
   const c = client || {};
   const items = invoice.items || [];
-  const subtotal = items.reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
-  const taxRate = Number(invoice.taxRate) || 0;
-  const tax = subtotal * taxRate;
-  const total = subtotal + tax;
+  const totals = docTaxTotals(invoice);
 
   return (
     <div className="doc-shell">
@@ -254,11 +280,14 @@ function InvoiceDocument({ invoice, client, business }) {
 
         <div className="totals">
           <div className="stack">
-            <div className="row"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
-            {taxRate > 0 &&
-            <div className="row"><span>Tax · {(taxRate * 100).toFixed(2)}%</span><span>{fmtMoney(tax)}</span></div>
+            <div className="row"><span>Subtotal</span><span>{fmtMoney(totals.subtotal)}</span></div>
+            {totals.gstRate > 0 &&
+            <div className="row"><span>GST · {(totals.gstRate * 100).toFixed(2)}%</span><span>{fmtMoney(totals.gst)}</span></div>
             }
-            <div className="row grand"><span>Total due</span><span className="v">{fmtMoney(total)}</span></div>
+            {totals.pstRate > 0 &&
+            <div className="row"><span>PST · {(totals.pstRate * 100).toFixed(2)}% on materials</span><span>{fmtMoney(totals.pst)}</span></div>
+            }
+            <div className="row grand"><span>Total due</span><span className="v">{fmtMoney(totals.total)}</span></div>
           </div>
         </div>
 
@@ -370,10 +399,7 @@ function PaystubDocument({ stub, employee, business }) {
 
 function EstimateDocument({ estimate, business }) {
   const items = estimate.items || [];
-  const taxRate = Number(estimate.taxRate) || 0;
-  const subtotal = items.reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
-  const gst = subtotal * taxRate;
-  const total = subtotal + gst;
+  const totals = docTaxTotals(estimate);
   const taxLabel =
     (window.SEED?.COUNTRY_TAX_RATES && business?.country && window.SEED.COUNTRY_TAX_RATES[business.country]?.label) ||
     "GST";
@@ -478,12 +504,18 @@ function EstimateDocument({ estimate, business }) {
 
         <div className="totals">
           <div className="stack">
-            <div className="row"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div>
+            <div className="row"><span>Subtotal</span><span>{fmtMoney(totals.subtotal)}</span></div>
             <div className="row">
-              <span>{taxLabel} · {(taxRate * 100).toFixed(2)}%</span>
-              <span>{fmtMoney(gst)}</span>
+              <span>{taxLabel} · {(totals.gstRate * 100).toFixed(2)}%</span>
+              <span>{fmtMoney(totals.gst)}</span>
             </div>
-            <div className="row grand"><span>Estimate total (incl. {taxLabel})</span><span className="v">{fmtMoney(total)}</span></div>
+            {totals.pstRate > 0 &&
+            <div className="row">
+              <span>PST · {(totals.pstRate * 100).toFixed(2)}% on materials</span>
+              <span>{fmtMoney(totals.pst)}</span>
+            </div>
+            }
+            <div className="row grand"><span>Estimate total{totals.pstRate > 0 ? " (incl. GST + PST)" : ` (incl. ${taxLabel})`}</span><span className="v">{fmtMoney(totals.total)}</span></div>
           </div>
         </div>
 
