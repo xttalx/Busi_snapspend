@@ -1,5 +1,7 @@
-/* Project calculators — material takeoffs for ceilings, drywall, framing, insulation,
-   paint, electrical and plumbing. Saved per project address; convertible to estimates. */
+/* Project calculators — bid-ready project cost for ceilings, drywall, framing, insulation,
+   paint, electrical and plumbing. Materials plus labor, overhead and profit.
+   Ceiling install labor is priced inside the $2–$6 / sq ft range published by
+   Ceiling Calculator Pro (ceilingcalculatorpro.com). Saved per project address. */
 const { useState: useStateTk, useMemo: useMemoTk } = React;
 
 const TK_PROJECT_TYPES = [
@@ -31,6 +33,34 @@ function tkFmt(n, digits = 0) {
 function tkRow(key, item, qty, unit, rate) {
   return { key, item, qty, unit, rate };
 }
+
+/* Half-hour rounding so a bid is not short a partial hour. */
+function tkHours(n) {
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.ceil(n * 2 - 1e-9) / 2;
+}
+
+function tkLaborFactor(type) {
+  if (type === "renovation") return 1.2;
+  if (type === "addition") return 1.1;
+  return 1;
+}
+
+const TK_OVERHEAD_PCT = 10;
+const TK_PROFIT_PCT = 15;
+
+const TK_LABOR = {
+  ceiling: {
+    rate: 75,
+    blurb: "Grid and tile crew. Hours are set so a straight room lands inside Ceiling Calculator Pro’s $2–$6 per sq ft install range.",
+  },
+  drywall: { rate: 70, blurb: "Hang, tape and finish. Edit the rate to match your crew." },
+  framing: { rate: 75, blurb: "Wall framing, including openings. Sheathing adds time when it is selected." },
+  insulation: { rate: 60, blurb: "Batt or blown-in install, plus vapour barrier when it is selected." },
+  paint: { rate: 55, blurb: "Cut-in and roll for each coat. Primer and trim add hours when selected." },
+  electrical: { rate: 95, blurb: "Rough-in time per device, plus pulling cable." },
+  plumbing: { rate: 100, blurb: "Rough-in time per fixture, plus the main trunk." },
+};
 
 function tkRoom(i) {
   const L = tkNum(i.length);
@@ -74,8 +104,10 @@ const TK_TRADES = {
         tkRow("anchors", "Hanger anchors / screw eyes", hangers, "pcs", 0.45),
         type === "renovation" && tkRow("demo", "Remove & dispose existing ceiling", tkUp(A), "sq ft", 1.25),
       ];
+      const sqftPerHour = (is22 ? 16 : 22) / (drop > 4 ? 1.15 : 1);
       return {
         rows,
+        labor: { hours: tkHours(A / sqftPerHour * tkLaborFactor(type)), qty: A, unit: "sq ft" },
         summary: [
           ["Ceiling area", `${tkFmt(A)} sq ft`],
           ["Perimeter", `${tkFmt(P, 1)} ft`],
@@ -120,8 +152,10 @@ const TK_TRADES = {
         type === "renovation" && tkRow("demo", "Demo & dispose existing drywall", tkUp(wall), "sq ft", 1.1),
         type === "addition" && tkRow("tiein", "Tie-in & feather at existing walls", 1, "allowance", 150),
       ];
+      const boardHours = total / 70 + total / 45 + corners * (room.H || 8) / 50;
       return {
         rows,
+        labor: { hours: tkHours(boardHours * tkLaborFactor(type)), qty: total, unit: "sq ft" },
         summary: [
           ["Wall area", `${tkFmt(wall)} sq ft`],
           ["Ceiling area", `${tkFmt(ceiling)} sq ft`],
@@ -163,8 +197,12 @@ const TK_TRADES = {
         type === "renovation" && tkRow("demo", "Demo & dispose existing framing", tkUp(L), "lin ft", 6),
         type === "addition" && tkRow("ledger", "Ledger / tie-in hardware to existing structure", 1, "allowance", 250),
       ];
+      const lfPerHour = H > 10 ? 6 : H > 8 ? 8 : 10;
+      let frameHours = L / lfPerHour + openings * 0.75;
+      if (i.sheathing) frameHours += L * H / 100;
       return {
         rows,
+        labor: { hours: tkHours(frameHours * tkLaborFactor(type)), qty: L, unit: "lin ft" },
         summary: [
           ["Wall area", `${tkFmt(L * H)} sq ft`],
           ["Stud spacing", `${spacing}" o.c.`],
@@ -204,8 +242,12 @@ const TK_TRADES = {
         i.application === "attic" && tkRow("baffles", "Rafter vent baffles", tkUp((L * 12) / 24) * 2, "pcs", 2.5),
         type === "renovation" && tkRow("demo", "Remove & dispose existing insulation", tkUp(A), "sq ft", 1.5),
       ];
+      let insulHours = A / (blown ? 70 : 140);
+      if (i.vapour) insulHours += A / 350;
+      if (i.application === "attic") insulHours += tkUp(L * 12 / 24) * 2 * 0.04;
       return {
         rows,
+        labor: { hours: tkHours(insulHours * tkLaborFactor(type)), qty: A, unit: "sq ft" },
         summary: [
           ["Area", `${tkFmt(A)} sq ft`],
           ["Target", `R-${r}`],
@@ -251,8 +293,13 @@ const TK_TRADES = {
         tkRow("kit", "Roller covers, trays & drop cloth kit", surface ? Math.max(1, tkUp(surface / 800)) : 0, "kits", 35),
         type === "renovation" && tkRow("patch", "Patch & sand allowance", 1, "allowance", 40),
       ];
+      let paintHours = wall * coats / 90 + ceiling * coats / 110;
+      if (primerMode === "full") paintHours += surface / 160;
+      if (primerMode === "spot") paintHours += surface * 0.15 / 160;
+      if (i.trim) paintHours += trimLf / 40;
       return {
         rows,
+        labor: { hours: tkHours(paintHours * tkLaborFactor(type)), qty: surface, unit: "sq ft" },
         summary: [
           ["Wall area", `${tkFmt(wall)} sq ft`],
           ["Ceiling area", `${tkFmt(ceiling)} sq ft`],
@@ -316,8 +363,10 @@ const TK_TRADES = {
         type === "renovation" && tkRow("fish", "Fishing, access & patch allowance", 1, "allowance", 150),
         type === "addition" && tkRow("panel", "Panel capacity check / subpanel allowance", 1, "allowance", 450),
       ];
+      const elecHours = devices * 0.75 + (cable14 + cable12) / 90 + (range ? 2.5 : 0);
       return {
         rows,
+        labor: { hours: tkHours(elecHours * tkLaborFactor(type)), qty: devices, unit: "device" },
         summary: [
           ["Devices", tkFmt(devices)],
           ["Circuits", tkFmt(c15 + c20 + range)],
@@ -380,8 +429,10 @@ const TK_TRADES = {
         type === "renovation" && tkRow("cap", "Demo & cap existing fixtures", 1, "allowance", 200),
         type === "addition" && tkRow("tiein", "Tie-in to existing supply & drain", 1, "allowance", 300),
       ];
+      const plumbHours = toilets * 4.5 + lavs * 3.5 + tubs * 6.5 + sinks * 4 + washer * 2.5 + dw * 2 + bibs * 1.5 + (i.waterHeater ? 3.5 : 0) + main / 20;
       return {
         rows,
+        labor: { hours: tkHours(plumbHours * tkLaborFactor(type)), qty: drains, unit: "fixture" },
         summary: [
           ["Fixtures", tkFmt(drains + dw)],
           ["Supply connections", tkFmt(connections)],
@@ -394,17 +445,86 @@ const TK_TRADES = {
 
 const TK_TRADE_ORDER = ["ceiling", "drywall", "framing", "insulation", "paint", "electrical", "plumbing"];
 
-function tkCalculate(trade, inputs, projectType, waste, rates) {
+function tkMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function tkLaborNote(trade, perUnit, labor) {
+  if (!labor.qty) return "Enter sizes to calculate labor.";
+  const each = `${fmtMoney(perUnit)} per ${labor.unit}`;
+  if (trade === "ceiling") {
+    const place = perUnit < 2 ? "under" : perUnit > 6 ? "above" : "inside";
+    return `${each} install labor, ${place} Ceiling Calculator Pro’s $2–$6 per sq ft range. Removal is its own line on a renovation.`;
+  }
+  return `${each} from crew production rates. Edit the hourly rate to match your wage.`;
+}
+
+function tkCalculate(trade, inputs, projectType, waste, rates, bid = {}) {
   const def = TK_TRADES[trade];
   const w = 1 + (Number(waste) || 0) / 100;
-  const { rows, summary } = def.calc({ ...def.defaults, ...inputs }, projectType, w);
+  const { rows, summary, labor = { hours: 0, qty: 0, unit: "sq ft" } } = def.calc({ ...def.defaults, ...inputs }, projectType, w);
   const priced = rows.filter(Boolean).map((r) => {
     const override = rates && rates[r.key];
     const rate = override === "" || override === undefined || override === null ? r.rate : Number(override) || 0;
     return { ...r, rate: Math.round(rate * 100) / 100 };
   });
-  const total = priced.reduce((s, r) => s + r.qty * r.rate, 0);
-  return { rows: priced, summary, total };
+  const materialTotal = tkMoney(priced.reduce((s, r) => s + r.qty * r.rate, 0));
+  const laborRate = bid.laborRate === "" || bid.laborRate == null ? TK_LABOR[trade].rate : Math.max(0, Number(bid.laborRate) || 0);
+  const overheadPct = bid.overheadPct === "" || bid.overheadPct == null ? TK_OVERHEAD_PCT : Math.max(0, Number(bid.overheadPct) || 0);
+  const profitPct = bid.profitPct === "" || bid.profitPct == null ? TK_PROFIT_PCT : Math.max(0, Number(bid.profitPct) || 0);
+  const laborHours = labor.hours || 0;
+  const laborTotal = tkMoney(laborHours * laborRate);
+  const direct = tkMoney(materialTotal + laborTotal);
+  const overhead = tkMoney(direct * (overheadPct / 100));
+  const profit = tkMoney((direct + overhead) * (profitPct / 100));
+  const bidTotal = tkMoney(direct + overhead + profit);
+  const perUnit = labor.qty ? laborTotal / labor.qty : 0;
+  return {
+    rows: priced,
+    summary,
+    materialTotal,
+    laborHours,
+    laborRate,
+    laborTotal,
+    laborPer: perUnit,
+    laborUnit: labor.unit,
+    laborNote: tkLaborNote(trade, perUnit, labor),
+    direct,
+    overheadPct,
+    profitPct,
+    overhead,
+    profit,
+    bid: bidTotal,
+    total: bidTotal,
+  };
+}
+
+function tkEnsureBid(record) {
+  if (!record || !TK_TRADES[record.trade]) return record;
+  if (record.bidTotal != null && record.laborRate != null) return { ...record, total: record.bidTotal };
+  const result = tkCalculate(
+    record.trade,
+    record.inputs || {},
+    record.projectType || "new",
+    record.waste,
+    Object.fromEntries((record.rows || []).map((r) => [r.key, r.rate])),
+    { laborRate: record.laborRate, overheadPct: record.overheadPct, profitPct: record.profitPct }
+  );
+  return {
+    ...record,
+    rows: result.rows,
+    materialTotal: result.materialTotal,
+    laborHours: result.laborHours,
+    laborRate: result.laborRate,
+    laborTotal: result.laborTotal,
+    overheadPct: result.overheadPct,
+    profitPct: result.profitPct,
+    overhead: result.overhead,
+    profit: result.profit,
+    bidTotal: result.bid,
+    total: result.bid,
+    laborNote: result.laborNote,
+  };
 }
 
 function tkAddressKey(address) {
@@ -425,19 +545,52 @@ function tkBlankForm(trade = "ceiling", projectType = "new", projectAddress = ""
     inputsByTrade: { [trade]: { ...TK_TRADES[trade].defaults } },
     waste: tkDefaultWaste(trade, projectType),
     wasteTouched: false,
+    laborRate: TK_LABOR[trade].rate,
+    overheadPct: TK_OVERHEAD_PCT,
+    profitPct: TK_PROFIT_PCT,
     rates: {},
   };
 }
 
 function tkEstimateItems(calcs) {
-  return calcs.flatMap((c) =>
-    (c.rows || []).filter((r) => r.qty > 0).map((r) => ({
+  const priced = calcs.map(tkEnsureBid).filter(Boolean);
+  const lines = priced.flatMap((c) => {
+    const label = TK_TRADES[c.trade]?.label;
+    const materials = (c.rows || []).filter((r) => r.qty > 0).map((r) => ({
       desc: r.item,
-      sub: [TK_TRADES[c.trade]?.label, c.name, r.unit].filter(Boolean).join(" · "),
+      sub: [label, c.name, r.unit].filter(Boolean).join(" · "),
       qty: r.qty,
       rate: r.rate,
-    }))
-  );
+    }));
+    const labor = c.laborHours > 0 ? [{
+      desc: `Labor — ${label}`,
+      sub: [c.name, `${tkFmt(c.laborHours, 1)} hrs @ ${fmtMoney(c.laborRate)}/hr`].filter(Boolean).join(" · "),
+      qty: c.laborHours,
+      rate: c.laborRate,
+    }] : [];
+    return [...materials, ...labor];
+  });
+  const overhead = tkMoney(priced.reduce((s, c) => s + (c.overhead || 0), 0));
+  const profit = tkMoney(priced.reduce((s, c) => s + (c.profit || 0), 0));
+  const ohPcts = [...new Set(priced.map((c) => c.overheadPct))];
+  const profitPcts = [...new Set(priced.map((c) => c.profitPct))];
+  if (overhead > 0) {
+    lines.push({
+      desc: ohPcts.length === 1 ? `Overhead (${ohPcts[0]}%)` : "Overhead",
+      sub: "On materials and labor",
+      qty: 1,
+      rate: overhead,
+    });
+  }
+  if (profit > 0) {
+    lines.push({
+      desc: profitPcts.length === 1 ? `Profit (${profitPcts[0]}%)` : "Profit",
+      sub: "On direct cost and overhead",
+      qty: 1,
+      rate: profit,
+    });
+  }
+  return lines;
 }
 
 function TkField({ field, value, onChange }) {
@@ -484,8 +637,12 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
   const def = TK_TRADES[form.trade];
   const inputs = form.inputsByTrade[form.trade] || def.defaults;
   const result = useMemoTk(
-    () => tkCalculate(form.trade, inputs, form.projectType, form.waste, form.rates),
-    [form.trade, inputs, form.projectType, form.waste, form.rates]
+    () => tkCalculate(form.trade, inputs, form.projectType, form.waste, form.rates, {
+      laborRate: form.laborRate,
+      overheadPct: form.overheadPct,
+      profitPct: form.profitPct,
+    }),
+    [form.trade, inputs, form.projectType, form.waste, form.rates, form.laborRate, form.overheadPct, form.profitPct]
   );
 
   const knownAddresses = useMemoTk(() => {
@@ -509,7 +666,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
     map((g) => ({
       ...g,
       items: g.items.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")),
-      total: g.items.reduce((s, t) => s + (t.total || 0), 0),
+      total: g.items.reduce((s, t) => s + (tkEnsureBid(t).total || 0), 0),
     })).
     sort((a, b) => (b.items[0]?.updatedAt || "").localeCompare(a.items[0]?.updatedAt || ""));
   }, [takeoffs]);
@@ -528,6 +685,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
     id: f.trade === trade ? f.id : null,
     inputsByTrade: f.inputsByTrade[trade] ? f.inputsByTrade : { ...f.inputsByTrade, [trade]: { ...TK_TRADES[trade].defaults } },
     waste: f.wasteTouched ? f.waste : tkDefaultWaste(trade, f.projectType),
+    laborRate: f.trade === trade ? f.laborRate : TK_LABOR[trade].rate,
     rates: f.trade === trade ? f.rates : {},
   }));
 
@@ -550,7 +708,17 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
       inputs,
       waste: Number(form.waste) || 0,
       rows: result.rows,
-      total: Math.round(result.total * 100) / 100,
+      materialTotal: result.materialTotal,
+      laborHours: result.laborHours,
+      laborRate: result.laborRate,
+      laborTotal: result.laborTotal,
+      laborNote: result.laborNote,
+      overheadPct: result.overheadPct,
+      profitPct: result.profitPct,
+      overhead: result.overhead,
+      profit: result.profit,
+      bidTotal: result.bid,
+      total: result.bid,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
@@ -579,6 +747,9 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
       inputsByTrade: { [t.trade]: { ...TK_TRADES[t.trade].defaults, ...(t.inputs || {}) } },
       waste: t.waste ?? tkDefaultWaste(t.trade, t.projectType),
       wasteTouched: true,
+      laborRate: t.laborRate ?? TK_LABOR[t.trade]?.rate ?? 0,
+      overheadPct: t.overheadPct ?? TK_OVERHEAD_PCT,
+      profitPct: t.profitPct ?? TK_PROFIT_PCT,
       rates: Object.fromEntries((t.rows || []).map((r) => [r.key, r.rate])),
     });
     window.scrollTo?.({ top: 0, behavior: "smooth" });
@@ -623,7 +794,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
       status: "draft",
       items,
       taxRate: Number(business?.taxRate) >= 0 ? Number(business.taxRate) : 0.05,
-      notes: "Material quantities from project calculators. Labour not included.",
+      notes: "Bid includes materials, labor, overhead and profit. Ceiling labor is priced from Ceiling Calculator Pro’s $2–$6 per sq ft install range. Confirm prices and the hourly rate before sending.",
       drawing: null,
       createdAt: today.toISOString(),
     };
@@ -707,7 +878,49 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
                   onChange={(e) => patch({ waste: e.target.value, wasteTouched: true })} />
                 <span className="tk-unit">%</span>
               </div>
-              <p className="tk-help">Default for {TK_PROJECT_TYPES.find((p) => p.id === form.projectType)?.label.toLowerCase()}: {tkDefaultWaste(form.trade, form.projectType)}%</p>
+              <p className="tk-help">Material waste. Default for {TK_PROJECT_TYPES.find((p) => p.id === form.projectType)?.label.toLowerCase()}: {tkDefaultWaste(form.trade, form.projectType)}%</p>
+            </div>
+            <div className="field">
+              <label htmlFor="tk-labor">Labor rate ($/hr)</label>
+              <input
+                id="tk-labor"
+                className="input"
+                type="number"
+                min="0"
+                step="1"
+                value={form.laborRate}
+                onChange={(e) => patch({ laborRate: e.target.value })} />
+              <p className="tk-help">{TK_LABOR[form.trade].blurb}</p>
+            </div>
+            <div className="field">
+              <label htmlFor="tk-oh">Overhead</label>
+              <div className="tk-input-unit">
+                <input
+                  id="tk-oh"
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.overheadPct}
+                  onChange={(e) => patch({ overheadPct: e.target.value })} />
+                <span className="tk-unit">%</span>
+              </div>
+              <p className="tk-help">On materials and labor. Default {TK_OVERHEAD_PCT}%.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="tk-profit">Profit</label>
+              <div className="tk-input-unit">
+                <input
+                  id="tk-profit"
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.profitPct}
+                  onChange={(e) => patch({ profitPct: e.target.value })} />
+                <span className="tk-unit">%</span>
+              </div>
+              <p className="tk-help">On direct cost plus overhead. Default {TK_PROFIT_PCT}%.</p>
             </div>
           </div>
 
@@ -717,15 +930,15 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
           </div>
         </section>
 
-        <section className="tk-card tk-results" aria-label="Material estimate">
+        <section className="tk-card tk-results" aria-label="Bid">
           <div className="tk-results-head">
             <div>
-              <h2 className="tk-title">{def.label} materials</h2>
-              <p className="tk-help">{TK_PROJECT_TYPES.find((p) => p.id === form.projectType)?.label} · {form.waste || 0}% waste included</p>
+              <h2 className="tk-title">{def.label} bid</h2>
+              <p className="tk-help">{TK_PROJECT_TYPES.find((p) => p.id === form.projectType)?.label} · {form.waste || 0}% material waste · labor, overhead and profit included</p>
             </div>
             <div className="tk-total">
-              <span className="tk-total-label">Material total</span>
-              <span className="tk-total-value">{fmtMoney(result.total)}</span>
+              <span className="tk-total-label">Bid total</span>
+              <span className="tk-total-value">{fmtMoney(result.bid)}</span>
             </div>
           </div>
 
@@ -769,7 +982,19 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
               </tbody>
             </table>
           </div>
-          <p className="tk-help">Quantities are rounded up and use common rules of thumb. Prices are editable defaults — confirm with your supplier and local code.</p>
+          <div className="tk-bid">
+            <div className="tk-bid-row"><span>Materials</span><span>{fmtMoney(result.materialTotal)}</span></div>
+            <div className="tk-bid-row">
+              <span>Labor · {tkFmt(result.laborHours, 1)} hrs @ {fmtMoney(result.laborRate)}/hr</span>
+              <span>{fmtMoney(result.laborTotal)}</span>
+            </div>
+            <p className="tk-help">{result.laborNote}</p>
+            <div className="tk-bid-row"><span>Direct cost</span><span>{fmtMoney(result.direct)}</span></div>
+            <div className="tk-bid-row"><span>Overhead ({result.overheadPct}%)</span><span>{fmtMoney(result.overhead)}</span></div>
+            <div className="tk-bid-row"><span>Profit ({result.profitPct}%)</span><span>{fmtMoney(result.profit)}</span></div>
+            <div className="tk-bid-row is-grand"><span>Bid total</span><span>{fmtMoney(result.bid)}</span></div>
+          </div>
+          <p className="tk-help">Material quantities are rounded up. Labor hours are rounded up to the next half hour. Prices and the hourly rate are editable defaults — confirm them before you send the estimate.</p>
 
           <div className="tk-actions">
             <button type="button" className="btn" onClick={startNew}>New calculation</button>
@@ -797,7 +1022,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
                 <div className="tk-group-head">
                   <div className="tk-group-title">
                     <h3>{g.address}</h3>
-                    <span className="tk-help">{g.items.length} calculation{g.items.length === 1 ? "" : "s"} · {fmtMoney(g.total)} materials</span>
+                    <span className="tk-help">{g.items.length} calculation{g.items.length === 1 ? "" : "s"} · {fmtMoney(g.total)} bid</span>
                   </div>
                   <div className="tk-group-actions">
                     <button type="button" className="btn sm" onClick={() => createEstimate(g.items, g.address)}>
@@ -820,7 +1045,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
                           {TK_PROJECT_TYPES.find((p) => p.id === t.projectType)?.label || "New build"} · {fmtDate((t.updatedAt || "").slice(0, 10))}
                         </span>
                       </button>
-                      <span className="tk-item-total">{fmtMoney(t.total || 0)}</span>
+                      <span className="tk-item-total">{fmtMoney(tkEnsureBid(t).total || 0)}</span>
                       <button type="button" className="iconbtn tk-danger" title="Delete calculation" aria-label="Delete calculation" onClick={() => removeOne(t)}>
                         <Icon name="trash" size={14} />
                       </button>
@@ -836,4 +1061,4 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
 }
 
 window.TakeoffsScreen = TakeoffsScreen;
-window.MartenTakeoffs = { calculate: tkCalculate, trades: TK_TRADES };
+window.MartenTakeoffs = { calculate: tkCalculate, trades: TK_TRADES, labor: TK_LABOR };
