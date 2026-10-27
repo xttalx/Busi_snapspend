@@ -25,6 +25,7 @@ const ICONS = {
   trash:     <><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.5 9h6l.5-9"/></>,
   check:     <><path d="M3 8.5l3 3 7-7"/></>,
   more:      <><circle cx="3" cy="8" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="13" cy="8" r="1" fill="currentColor"/></>,
+  menu:      <><path d="M2 4h12M2 8h12M2 12h12"/></>,
   receipt:   <><path d="M3 1l1 1 1-1 1 1 1-1 1 1 1-1 1 1 1-1 1 1v13l-1-1-1 1-1-1-1 1-1-1-1 1-1-1-1 1-1-1z"/><path d="M5 5h6M5 8h6M5 11h4"/></>,
   calendar:  <><path d="M2 4h12v10H2z"/><path d="M2 7h12"/><path d="M5 2v3M11 2v3"/></>,
   chev_r:    <><path d="M6 3l4 5-4 5"/></>,

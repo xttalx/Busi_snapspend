@@ -289,6 +289,16 @@ function HelpSupportModal({ open, onClose, session, userBusiness, toast }) {
 function Sidebar({ route, setRoute, userBusiness, session, onSignOut, toast }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setMobileMenuOpen(false); };
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("nav-open");
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("nav-open");
+    };
+  }, [mobileMenuOpen]);
   // The sidebar logo shows the user's business name as the primary mark,
   // with the product brand tucked underneath. If unchanged from the default brand,
   // collapse to a single wordmark to avoid repeating the same name twice.
@@ -313,12 +323,32 @@ function Sidebar({ route, setRoute, userBusiness, session, onSignOut, toast }) {
       <button
         className="btn mobile-menu-toggle"
         onClick={() => setMobileMenuOpen((v) => !v)}
-        aria-label="Toggle navigation menu"
-        aria-expanded={mobileMenuOpen}>
-        <Icon name="more" size={14} /> Menu
+        aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+        aria-expanded={mobileMenuOpen}
+        aria-controls="app-nav">
+        <Icon name={mobileMenuOpen ? "close" : "menu"} size={16} />
       </button>
 
-      <div className={"sidebar-menu " + (mobileMenuOpen ? "open" : "")}>
+      {mobileMenuOpen &&
+      <div className="sidebar-scrim" onClick={() => setMobileMenuOpen(false)} />
+      }
+
+      <div id="app-nav" className={"sidebar-menu " + (mobileMenuOpen ? "open" : "")}>
+        <div className="sidebar-drawer-head">
+          <span className="sidebar-drawer-title">Menu</span>
+          <button type="button" className="iconbtn" aria-label="Close menu" onClick={() => setMobileMenuOpen(false)}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <div className="sidebar-drawer-account">
+          <div className="avatar">
+            {(session?.user?.email || userBusiness?.owner || "A").charAt(0).toUpperCase()}
+          </div>
+          <div className="meta">
+            <b>{userBusiness?.owner || userBusiness?.name || "Account"}</b>
+            <span>{session?.user?.email || name}</span>
+          </div>
+        </div>
         {NAV.map((group) =>
         <div className="nav-group" key={group.group}>
             <div className="nav-label">{group.group}</div>

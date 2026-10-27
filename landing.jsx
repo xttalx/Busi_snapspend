@@ -52,6 +52,7 @@ function LandingPage({ setupRequired = false }) {
         <div className="landing-brand">
           <BrandLogo size={44} showName name={brand} />
         </div>
+        <a className="btn sm landing-signin" href="#sign-in">Sign in</a>
         <p className="landing-eyebrow">Invoice generator · GST calculator · expense &amp; payroll</p>
       </header>
 
@@ -75,24 +76,9 @@ function LandingPage({ setupRequired = false }) {
               </li>
             ))}
           </ul>
-
-          <div className="landing-proof">
-            <div className="landing-stat">
-              <b>One login</b>
-              <span>Secure cloud sync across devices</span>
-            </div>
-            <div className="landing-stat">
-              <b>Studio-ready</b>
-              <span>Branded invoices & business profile</span>
-            </div>
-            <div className="landing-stat">
-              <b>Export when you need it</b>
-              <span>PDF expense ledgers & printable docs</span>
-            </div>
-          </div>
         </section>
 
-        <aside className="landing-auth-panel" aria-label="Sign in or create account">
+        <aside id="sign-in" className="landing-auth-panel" aria-label="Sign in or create account">
           <AuthForm
             setupRequired={setupRequired}
             title={setupRequired ? "Setup required" : "Start your workspace"}
@@ -104,6 +90,21 @@ function LandingPage({ setupRequired = false }) {
             compact
           />
         </aside>
+
+        <div className="landing-proof">
+          <div className="landing-stat">
+            <b>One login</b>
+            <span>Secure cloud sync across devices</span>
+          </div>
+          <div className="landing-stat">
+            <b>Studio-ready</b>
+            <span>Branded invoices & business profile</span>
+          </div>
+          <div className="landing-stat">
+            <b>Export when you need it</b>
+            <span>PDF expense ledgers & printable docs</span>
+          </div>
+        </div>
       </div>
 
       <section className="landing-features" aria-labelledby="landing-features-heading">
