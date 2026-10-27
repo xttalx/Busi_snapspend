@@ -4286,7 +4286,10 @@ body { background: var(--canvas); color: var(--ink); }
   border-radius: var(--r-md);
   background: var(--paper);
 }
-.tk-block-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.tk-block-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tk-space-name { max-width: 220px; }
+.tk-spaces { display: flex; flex-direction: column; gap: 12px; }
+.tk-space-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .tk-block-head h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
 .tk-block-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .tk-table tr.tk-section td {
@@ -4342,7 +4345,7 @@ body { background: var(--canvas); color: var(--ink); }
 .tk-total-value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
 .tk-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   background: #f9fafb;
   border: 1px solid var(--rule);
   border-radius: var(--r-md);
@@ -4372,6 +4375,11 @@ body { background: var(--canvas); color: var(--ink); }
 .tk-table b { font-weight: 600; color: var(--ink); }
 .tk-unit-inline { font-size: 12px; color: var(--ink-3); }
 .tk-rate { width: 96px; padding: 6px 8px; text-align: right; box-shadow: none; }
+.tk-rate.is-missing, .input.is-missing { border-color: #b8442a; background: #fdf6f3; }
+.tk-missing { color: #b8442a; font-weight: 600; }
+.tk-missing-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.tk-price-alert .modal-scrim { z-index: 120; }
+.tk-price-alert .modal { z-index: 121; }
 .tk-bid {
   display: flex;
   flex-direction: column;
