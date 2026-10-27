@@ -1,6 +1,7 @@
 /* Pro calculator — one project bid. Materials, labor, overhead and profit.
-   Prices are published list or contractor midpoints. A line with no published
-   price stays blank and the screen asks for it. Saved per project address. */
+   Material prices are Home Depot shelf prices in the business currency.
+   Canada uses Home Depot Canada (CAD). The United States uses The Home Depot (USD).
+   A line with no listed price stays blank and the screen asks for it. */
 const { useState: useStateTk, useMemo: useMemoTk, useEffect: useEffectTk } = React;
 
 const TK_PROJECT_TYPES = [
@@ -18,7 +19,7 @@ const TK_SCOPES = [
   { id: "mud", label: "Mudding", rate: 70, blurb: "Tape, compound and sand to a finish level." },
   { id: "paint", label: "Paint", rate: 55, blurb: "Primer, finish coats and trim." },
   { id: "flooring", label: "Flooring", rate: 60, blurb: "Floor material, underlayment and baseboard." },
-  { id: "ceiling", label: "Grid ceiling", rate: 58, blurb: "Suspended grid and 2×4 or 2×2 acoustic tile. US 2026 list prices — confirm in Canadian dollars." },
+  { id: "ceiling", label: "Grid ceiling", rate: 58, blurb: "Suspended grid and acoustic tile. Shelf prices are used when Home Depot lists them." },
   { id: "tiling", label: "Tiling", rate: 70, blurb: "Ceramic tile, thinset and grout. Ontario labor band, 2026." },
   { id: "cabinetry", label: "Cabinetry", rate: 80, blurb: "Cabinet run by the linear foot, plus installation. Canadian 2026 bands." },
   { id: "electrical", label: "Electrical", rate: 100, blurb: "Device counts and cable. Blank lines had no published unit price." },
@@ -28,12 +29,75 @@ const TK_SCOPES = [
 ];
 
 const TK_FLOORS = {
-  lvp: { label: "Luxury vinyl plank", rate: 3.4, under: 0.5, underLabel: "Underlayment", pace: 90, waste: 10 },
-  laminate: { label: "Laminate", rate: 2.8, under: 0.45, underLabel: "Foam underlayment", pace: 75, waste: 10 },
-  hardwood: { label: "Engineered hardwood", rate: 7.75, under: 0, pace: 40, waste: 10 },
-  tile: { label: "Tile", rate: 5.25, under: 0, pace: 28, waste: 15 },
-  carpet: { label: "Carpet", rate: 3.1, under: 0.75, underLabel: "Carpet pad", pace: 110, waste: 8 },
+  lvp: { label: "Luxury vinyl plank", underLabel: "Underlayment", pace: 90, waste: 10, shelf: "lvp" },
+  laminate: { label: "Laminate", underLabel: "Foam underlayment", pace: 75, waste: 10, shelf: "laminate" },
+  hardwood: { label: "Engineered hardwood", pace: 40, waste: 10, shelf: "hardwood" },
+  tile: { label: "Tile", pace: 28, waste: 15, shelf: "tile" },
+  carpet: { label: "Carpet", underLabel: "Carpet pad", pace: 110, waste: 8, shelf: "carpet" },
 };
+
+// Shelf prices observed on the retailer sites. Missing keys stay blank.
+const TK_SHELF = {
+  CAD: {
+    currency: "CAD",
+    source: "Home Depot Canada",
+    rates: {
+      stud2x4_precut: 3.33,
+      stud2x4_8: 6.58,
+      stud2x4_9: 3.98,
+      stud2x6_8: 14.33,
+      osb716: 72.98,
+      drywall_half_4x8: 16.52,
+      drywall_half_4x10: 17.13,
+      drywall_half_4x12: 20.55,
+      drywall_mr_4x8: 15.86,
+      mud_box: 19.93,
+      paint_gal: 47.97,
+      lvp: 4.28,
+      cable_14_2_ft: 1.01,
+    },
+  },
+  USD: {
+    currency: "USD",
+    source: "The Home Depot",
+    rates: {
+      stud2x4_precut: 4.15,
+      stud2x4_8: 4.25,
+      drywall_half_4x8: 16.68,
+      drywall_half_4x10: 20.85,
+      drywall_half_4x12: 25,
+      drywall_mr_4x8: 23.58,
+      drywall_58_4x8: 17.78,
+    },
+  },
+};
+
+function tkShelfBook(country) {
+  const name = String(country || "").trim().toLowerCase();
+  if (name === "canada") return TK_SHELF.CAD;
+  if (name === "united states") return TK_SHELF.USD;
+  return { currency: "", source: "", unavailable: true, rates: {} };
+}
+
+function tkShelf(book, key) {
+  if (!book || book.unavailable || !key) return null;
+  const rate = book.rates[key];
+  return rate == null ? null : rate;
+}
+
+function tkStudShelf(book, is26, height) {
+  const h = Math.ceil(Number(height) || 8);
+  if (is26) return h <= 8 ? tkShelf(book, "stud2x6_8") : null;
+  if (h <= 8) return tkShelf(book, "stud2x4_precut");
+  if (h <= 9) return tkShelf(book, "stud2x4_9") ?? tkShelf(book, "stud2x4_8");
+  return null;
+}
+
+function tkDrywallShelf(book, thickness, sheetArea) {
+  if (thickness === "5/8") return sheetArea === 32 ? tkShelf(book, "drywall_58_4x8") : null;
+  if (thickness === "1/2mr") return sheetArea === 32 ? tkShelf(book, "drywall_mr_4x8") : null;
+  return tkShelf(book, { 32: "drywall_half_4x8", 40: "drywall_half_4x10", 48: "drywall_half_4x12" }[sheetArea]);
+}
 
 const TK_LEGACY = {
   ceiling: "Ceilings",
@@ -226,8 +290,11 @@ function tkScopeById(id) {
   return TK_SCOPES.find((s) => s.id === id);
 }
 
-function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHours, rates, overheadPct, profitPct }) {
+function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHours, rates, overheadPct, profitPct, country }) {
   const i = { ...TK_DEFAULTS, ...(inputs || {}) };
+  const book = tkShelfBook(country);
+  const shelf = (key) => tkShelf(book, key);
+  const shelfSource = (rate) => (rate == null ? "" : book.source);
   const type = projectType || "new";
   const on = new Set(scopes || []);
   const projectWaste = Number(waste);
@@ -325,14 +392,21 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     [...studsByLabel.entries()].forEach(([label, info], index, all) => {
       const share = index === all.length - 1 ? studTotal - placed : tkUp((info.qty / rawStuds) * studTotal);
       placed += share;
-      price("framing", { key: "studs-" + Math.ceil(info.H), item: label, qty: share, unit: "pcs", rate: (is26 ? 1.15 : 0.7) * Math.max(8, Math.ceil(info.H)) });
+      const studRate = tkStudShelf(book, is26, info.H);
+      price("framing", { key: "studs-" + Math.ceil(info.H), item: label, qty: share, unit: "pcs", rate: studRate, source: shelfSource(studRate) });
     });
-    if (!studsByLabel.size && cornerStuds > 0) price("framing", { key: "studs", item: `${i.framingSize} studs`, qty: studTotal, unit: "pcs", rate: (is26 ? 1.15 : 0.7) * Math.max(8, Math.ceil(H)) });
-    price("framing", { key: "plates", item: `${i.framingSize} plate stock 16' (bottom + double top)`, qty: tkUp((plateLf / 16) * w), unit: "pcs", rate: is26 ? 18 : 11 });
-    if (openings > 0) price("framing", { key: "headers", item: "2×10 header stock", qty: tkUp(headerLf * w), unit: "lin ft", rate: 3.2 });
-    if (i.sheathing && sheathSf > 0) price("framing", { key: "osb", item: "OSB sheathing 7/16\" 4' × 8'", qty: tkUp((sheathSf / 32) * w), unit: "sheets", rate: 24 });
-    price("framing", { key: "nails", item: "Framing nails 3-1/4\"", qty: Math.max(1, tkUp(studTotal / 7.5)), unit: "lb", rate: 4 });
-    if (type !== "renovation") price("framing", { key: "anchors", item: "Bottom-plate anchors", qty: tkUp(wallLen / 4), unit: "pcs", rate: 1.2 });
+    if (!studsByLabel.size && cornerStuds > 0) {
+      const studRate = tkStudShelf(book, is26, H);
+      price("framing", { key: "studs", item: `${i.framingSize} studs`, qty: studTotal, unit: "pcs", rate: studRate, source: shelfSource(studRate) });
+    }
+    price("framing", { key: "plates", item: `${i.framingSize} plate stock 16' (bottom + double top)`, qty: tkUp((plateLf / 16) * w), unit: "pcs", rate: null });
+    if (openings > 0) price("framing", { key: "headers", item: "2×10 header stock", qty: tkUp(headerLf * w), unit: "lin ft", rate: null });
+    if (i.sheathing && sheathSf > 0) {
+      const osb = shelf("osb716");
+      price("framing", { key: "osb", item: "OSB sheathing 7/16\" 4' × 8'", qty: tkUp((sheathSf / 32) * w), unit: "sheets", rate: osb, source: shelfSource(osb) });
+    }
+    price("framing", { key: "nails", item: "Framing nails 3-1/4\"", qty: Math.max(1, tkUp(studTotal / 7.5)), unit: "lb", rate: null });
+    if (type !== "renovation") price("framing", { key: "anchors", item: "Bottom-plate anchors", qty: tkUp(wallLen / 4), unit: "pcs", rate: null });
     if (type === "renovation") price("framing", { key: "demo", item: "Demo & dispose existing framing", qty: tkUp(wallLen), unit: "lin ft", rate: 6 });
     if (type === "addition") price("framing", { key: "ledger", item: "Ledger / tie-in to existing structure", qty: 1, unit: "allowance", rate: 250 });
     addSection({ id: "framing", label: "Framing", hours: tkHours(hours * factor), rate: laborRateFor("framing"), qty: wallLen, unit: "lin ft" });
@@ -340,11 +414,11 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
 
   if (on.has("drywall") && board > 0) {
     const sheetArea = { "4x8": 32, "4x10": 40, "4x12": 48 }[i.sheet] || 32;
-    const sheetPrice = { 32: 16, 40: 21, 48: 25 }[sheetArea] + ({ "5/8": 4, "1/2mr": 6 }[i.thickness] || 0);
+    const sheetPrice = tkDrywallShelf(book, i.thickness, sheetArea);
     const boardLabel = { "5/8": "5/8\" Type X", "1/2mr": "1/2\" moisture-resistant" }[i.thickness] || "1/2\" regular";
     const sheets = tkUp((board / sheetArea) * w);
-    price("drywall", { key: "sheets", item: `Drywall ${boardLabel} ${String(i.sheet).replace("x", "' × ")}'`, qty: sheets, unit: "sheets", rate: sheetPrice });
-    price("drywall", { key: "screws", item: "Drywall screws 1-1/4\" (box of 1,000)", qty: Math.max(1, tkUp((sheets * 32) / 1000)), unit: "boxes", rate: 15 });
+    price("drywall", { key: "sheets", item: `Drywall ${boardLabel} ${String(i.sheet).replace("x", "' × ")}'`, qty: sheets, unit: "sheets", rate: sheetPrice, source: shelfSource(sheetPrice) });
+    price("drywall", { key: "screws", item: "Drywall screws 1-1/4\" (box of 1,000)", qty: Math.max(1, tkUp((sheets * 32) / 1000)), unit: "boxes", rate: null });
     if (type === "renovation") price("drywall", { key: "demo", item: "Demo & dispose existing drywall", qty: tkUp(wall), unit: "sq ft", rate: 1.1 });
     addSection({ id: "drywall", label: "Drywall installation", hours: tkHours((board / 55) * factor), rate: laborRateFor("drywall"), qty: board, unit: "sq ft" });
   }
@@ -354,10 +428,11 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const pace = level === "5" ? 28 : level === "3" ? 50 : 38;
     const coverage = level === "5" ? 220 : 450;
     const beadCorners = i.outsideCorners === "" || i.outsideCorners == null ? tkNum(i.corners) : Math.max(0, Number(i.outsideCorners) || 0);
-    price("mud", { key: "mud", item: `Joint compound, level ${level} finish`, qty: tkUp(board / coverage), unit: "boxes", rate: 24 });
-    price("mud", { key: "tape", item: "Paper joint tape 500'", qty: Math.max(1, tkUp((board * 0.38) / 500)), unit: "rolls", rate: 9 });
-    if (beadCorners > 0) price("mud", { key: "bead", item: "Corner bead 8'", qty: tkUp(((beadCorners * H) / 8) * w), unit: "pcs", rate: 4.5 });
-    price("mud", { key: "sand", item: "Sanding screens & pole", qty: Math.max(1, tkUp(board / 800)), unit: "kits", rate: 18 });
+    const mud = shelf("mud_box");
+    price("mud", { key: "mud", item: `Joint compound, level ${level} finish`, qty: tkUp(board / coverage), unit: "boxes", rate: mud, source: shelfSource(mud) });
+    price("mud", { key: "tape", item: "Paper joint tape 500'", qty: Math.max(1, tkUp((board * 0.38) / 500)), unit: "rolls", rate: null });
+    if (beadCorners > 0) price("mud", { key: "bead", item: "Corner bead 8'", qty: tkUp(((beadCorners * H) / 8) * w), unit: "pcs", rate: null });
+    price("mud", { key: "sand", item: "Sanding screens & pole", qty: Math.max(1, tkUp(board / 800)), unit: "kits", rate: null });
     if (type === "addition") price("mud", { key: "tiein", item: "Tie-in & feather at existing walls", qty: 1, unit: "allowance", rate: 150 });
     addSection({ id: "mud", label: "Mudding", hours: tkHours((board / pace) * factor), rate: laborRateFor("mud"), qty: board, unit: "sq ft" });
   }
@@ -369,14 +444,15 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const primerMode = i.primer === "auto" ? (type === "renovation" ? "spot" : "full") : i.primer;
     const trimLf = perimeter + doorCount * 17 + windowCount * 14;
     const surface = wall + ceiling;
-    price("paint", { key: "wall", item: "Wall paint", qty: tkUp(((wall * coats) / coverage) * w), unit: "gal", rate: 58 });
-    if (ceiling > 0) price("paint", { key: "ceiling", item: "Ceiling paint, flat", qty: tkUp(((ceiling * coats) / coverage) * w), unit: "gal", rate: 45 });
-    if (primerMode === "full") price("paint", { key: "primer", item: "Primer-sealer", qty: tkUp((surface / 300) * w), unit: "gal", rate: 40 });
-    if (primerMode === "spot") price("paint", { key: "primer", item: "Primer (spot prime)", qty: Math.max(1, tkUp(((surface * 0.15) / 300) * w)), unit: "gal", rate: 40 });
-    if (i.trim) price("paint", { key: "trim", item: "Trim & door enamel", qty: tkUp(trimLf / 75), unit: "qt", rate: 26 });
-    if (i.trim) price("paint", { key: "caulk", item: "Paintable caulk", qty: tkUp(trimLf / 50), unit: "tubes", rate: 7 });
-    price("paint", { key: "tape", item: "Painter's tape 60 yd", qty: tkUp(trimLf / 150), unit: "rolls", rate: 9 });
-    price("paint", { key: "kit", item: "Roller covers, trays & drop cloth kit", qty: Math.max(1, tkUp(surface / 800)), unit: "kits", rate: 35 });
+    const paintGal = shelf("paint_gal");
+    price("paint", { key: "wall", item: "Wall paint", qty: tkUp(((wall * coats) / coverage) * w), unit: "gal", rate: paintGal, source: shelfSource(paintGal) });
+    if (ceiling > 0) price("paint", { key: "ceiling", item: "Ceiling paint, flat", qty: tkUp(((ceiling * coats) / coverage) * w), unit: "gal", rate: paintGal, source: shelfSource(paintGal) });
+    if (primerMode === "full") price("paint", { key: "primer", item: "Primer-sealer", qty: tkUp((surface / 300) * w), unit: "gal", rate: null });
+    if (primerMode === "spot") price("paint", { key: "primer", item: "Primer (spot prime)", qty: Math.max(1, tkUp(((surface * 0.15) / 300) * w)), unit: "gal", rate: null });
+    if (i.trim) price("paint", { key: "trim", item: "Trim & door enamel", qty: tkUp(trimLf / 75), unit: "qt", rate: null });
+    if (i.trim) price("paint", { key: "caulk", item: "Paintable caulk", qty: tkUp(trimLf / 50), unit: "tubes", rate: null });
+    price("paint", { key: "tape", item: "Painter's tape 60 yd", qty: tkUp(trimLf / 150), unit: "rolls", rate: null });
+    price("paint", { key: "kit", item: "Roller covers, trays & drop cloth kit", qty: Math.max(1, tkUp(surface / 800)), unit: "kits", rate: null });
     if (type === "renovation") price("paint", { key: "patch", item: "Patch & sand allowance", qty: 1, unit: "allowance", rate: 40 });
     let hours = (wall * coats) / 90 + (ceiling * coats) / 110;
     if (primerMode === "full") hours += surface / 160;
@@ -388,18 +464,19 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
   if (on.has("flooring") && floorA > 0) {
     const spec = TK_FLOORS[i.floorType] || TK_FLOORS.lvp;
     const fw = 1 + (Math.max(Number.isFinite(projectWaste) ? projectWaste : tkDefaultWaste(type), spec.waste) / 100);
-    price("flooring", { key: "floor", item: spec.label, qty: tkUp(floorA * fw), unit: "sq ft", rate: spec.rate });
-    if (spec.under > 0) price("flooring", { key: "under", item: spec.underLabel, qty: tkUp(floorA * fw), unit: "sq ft", rate: spec.under });
+    const floorRate = shelf(spec.shelf);
+    price("flooring", { key: "floor", item: spec.label, qty: tkUp(floorA * fw), unit: "sq ft", rate: floorRate, source: shelfSource(floorRate) });
+    if (spec.underLabel) price("flooring", { key: "under", item: spec.underLabel, qty: tkUp(floorA * fw), unit: "sq ft", rate: null });
     if (i.floorType === "tile") {
-      price("flooring", { key: "thinset", item: "Thinset mortar", qty: tkUp(floorA / 50), unit: "bags", rate: 18 });
-      price("flooring", { key: "grout", item: "Grout", qty: tkUp(floorA / 40), unit: "bags", rate: 16 });
-      price("flooring", { key: "spacers", item: "Tile spacers & wedges", qty: 1, unit: "kit", rate: 12 });
+      price("flooring", { key: "thinset", item: "Thinset mortar", qty: tkUp(floorA / 50), unit: "bags", rate: null });
+      price("flooring", { key: "grout", item: "Grout", qty: tkUp(floorA / 40), unit: "bags", rate: null });
+      price("flooring", { key: "spacers", item: "Tile spacers & wedges", qty: 1, unit: "kit", rate: null });
     }
     if (i.baseboard && perimeter > 0) {
-      price("flooring", { key: "base", item: "Primed baseboard", qty: tkUp(perimeter * w), unit: "lin ft", rate: 2.25 });
-      price("flooring", { key: "basefast", item: "Baseboard nails & caulk", qty: 1, unit: "kit", rate: 16 });
+      price("flooring", { key: "base", item: "Primed baseboard", qty: tkUp(perimeter * w), unit: "lin ft", rate: null });
+      price("flooring", { key: "basefast", item: "Baseboard nails & caulk", qty: 1, unit: "kit", rate: null });
     }
-    if (doorCount > 0) price("flooring", { key: "trans", item: "Transitions", qty: doorCount, unit: "pcs", rate: 22 });
+    if (doorCount > 0) price("flooring", { key: "trans", item: "Transitions", qty: doorCount, unit: "pcs", rate: null });
     if (type === "renovation") price("flooring", { key: "demo", item: "Remove & dispose existing floor", qty: tkUp(floorA), unit: "sq ft", rate: 1.75 });
     let hours = floorA / spec.pace;
     if (i.baseboard && perimeter > 0) hours += perimeter / 45;
@@ -409,7 +486,7 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
   if (on.has("ceiling") && (tkNum(i.ceilingArea) || floorSum) > 0) {
     const area = tkNum(i.ceilingArea) || floorSum;
     const twoByTwo = i.gridSize === "2x2";
-    const tileEach = twoByTwo ? 16.4 : 16.8;
+    const tileEach = null;
     const tileSf = twoByTwo ? 4 : 8;
     let mainLf = 0;
     let cross4 = 0;
@@ -424,11 +501,11 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
       });
     }
     price("ceiling", { key: "tile", item: twoByTwo ? "Acoustic tile 2' × 2'" : "Acoustic tile 2' × 4'", qty: tkUp((area / tileSf) * w), unit: "pcs", rate: tileEach });
-    price("ceiling", { key: "main", item: "Main tee 12'", qty: tkUp((mainLf / 12) * w), unit: "pcs", rate: 6.5 });
-    price("ceiling", { key: "cross4", item: "Cross tee 4'", qty: tkUp(cross4 * w), unit: "pcs", rate: 2.75 });
-    if (twoByTwo) price("ceiling", { key: "cross2", item: "Cross tee 2'", qty: tkUp(cross4 * 2 * w), unit: "pcs", rate: 1.9 });
-    if (perimeter > 0) price("ceiling", { key: "angle", item: "Wall angle 12'", qty: tkUp((slabEdge / 12) * w), unit: "pcs", rate: 4.75 });
-    price("ceiling", { key: "wire", item: "Hanger wire", qty: tkUp(mainLf / 4), unit: "pcs", rate: 0.3 });
+    price("ceiling", { key: "main", item: "Main tee 12'", qty: tkUp((mainLf / 12) * w), unit: "pcs", rate: null });
+    price("ceiling", { key: "cross4", item: "Cross tee 4'", qty: tkUp(cross4 * w), unit: "pcs", rate: null });
+    if (twoByTwo) price("ceiling", { key: "cross2", item: "Cross tee 2'", qty: tkUp(cross4 * 2 * w), unit: "pcs", rate: null });
+    if (perimeter > 0) price("ceiling", { key: "angle", item: "Wall angle 12'", qty: tkUp((slabEdge / 12) * w), unit: "pcs", rate: null });
+    price("ceiling", { key: "wire", item: "Hanger wire", qty: tkUp(mainLf / 4), unit: "pcs", rate: null });
     const pace = twoByTwo ? 12 : 15;
     addSection({ id: "ceiling", label: "Grid ceiling", hours: hoursFor("ceiling", (area / pace) * factor), rate: laborRateFor("ceiling"), qty: area, unit: "sq ft" });
   }
@@ -437,8 +514,8 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const where = i.tileWhere || "wall";
     const tileA = tkNum(i.tileArea) || (where === "floor" ? floorA : where === "both" ? wall + floorA : wall);
     if (tileA > 0) {
-      price("tiling", { key: "tile", item: "Ceramic tile", qty: tkUp(tileA * w), unit: "sq ft", rate: 6 });
-      price("tiling", { key: "set", item: "Thinset, grout and trim", qty: tkUp(tileA * w), unit: "sq ft", rate: 3.5 });
+      price("tiling", { key: "tile", item: "Ceramic tile", qty: tkUp(tileA * w), unit: "sq ft", rate: null });
+      price("tiling", { key: "set", item: "Thinset, grout and trim", qty: tkUp(tileA * w), unit: "sq ft", rate: null });
       if (i.waterproof) price("tiling", { key: "membrane", item: "Waterproof membrane", qty: tkUp(tileA), unit: "sq ft", rate: null });
       addSection({ id: "tiling", label: "Tiling", hours: hoursFor("tiling", (tileA / 7) * factor), rate: laborRateFor("tiling"), qty: tileA, unit: "sq ft" });
     }
@@ -447,7 +524,7 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
   if (on.has("cabinetry") && tkNum(i.cabinetLf) > 0) {
     const lf = tkNum(i.cabinetLf);
     const custom = i.cabinetGrade === "custom";
-    const cabinetRate = { rta: 200, stock: 375, semi: 500, custom: 850 }[i.cabinetGrade] || 200;
+    const cabinetRate = null;
     const cabinetLabel = { rta: "RTA / flat-pack cabinets", stock: "Stock cabinets", semi: "Semi-custom cabinets", custom: "Custom cabinets" }[i.cabinetGrade] || "Cabinets";
     price("cabinetry", { key: "cabs", item: cabinetLabel, qty: tkUp(lf), unit: "lin ft", rate: cabinetRate });
     addSection({ id: "cabinetry", label: "Cabinetry", hours: hoursFor("cabinetry", lf * (custom ? 2.5 : 1.875) * factor), rate: laborRateFor("cabinetry"), qty: lf, unit: "lin ft" });
@@ -459,7 +536,8 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const lights = tkOr(i.lights, Math.max(1, tkUp((floorSum || 0) / 80) || 1));
     const devices = outlets + switches + lights;
     if (devices > 0) {
-      price("electrical", { key: "cable", item: "14/2 NM cable", qty: tkUp(devices * 25), unit: "ft", rate: null });
+      const cable = shelf("cable_14_2_ft");
+      price("electrical", { key: "cable", item: "14/2 NM cable", qty: tkUp(devices * 25), unit: "ft", rate: cable, source: shelfSource(cable) });
       price("electrical", { key: "boxes", item: "Device boxes", qty: tkUp(devices), unit: "pcs", rate: null });
       price("electrical", { key: "devices", item: "Receptacles, switches and lampholders", qty: tkUp(devices), unit: "pcs", rate: null });
       addSection({ id: "electrical", label: "Electrical", hours: hoursFor("electrical", null), rate: laborRateFor("electrical"), qty: devices, unit: "devices" });
@@ -479,10 +557,11 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const thickIn = Number(i.slabThick) || 4;
     const m3 = Math.ceil(((slab * (thickIn / 12) / 35.3147) * w) * 10) / 10;
     const smallLoad = m3 <= 1 ? 400 : m3 < 3.2 ? 300 : m3 <= 4 ? 175 : 0;
-    price("concrete", { key: "mix", item: "Ready-mix 25 MPa", qty: m3, unit: "m³", rate: 245, digits: 1 });
-    price("concrete", { key: "env", item: "Environmental charge", qty: m3, unit: "m³", rate: 7, digits: 1 });
-    price("concrete", { key: "fuel", item: "Fuel surcharge", qty: m3, unit: "m³", rate: 2, digits: 1 });
-    if (smallLoad > 0) price("concrete", { key: "short", item: "Small-load delivery", qty: 1, unit: "load", rate: smallLoad });
+    const readyMix = book.currency === "CAD";
+    price("concrete", { key: "mix", item: "Ready-mix 25 MPa", qty: m3, unit: "m³", rate: readyMix ? 245 : null, digits: 1, source: readyMix ? "CBM ready-mix, Greater Toronto" : "" });
+    price("concrete", { key: "env", item: "Environmental charge", qty: m3, unit: "m³", rate: readyMix ? 7 : null, digits: 1, source: readyMix ? "CBM ready-mix, Greater Toronto" : "" });
+    price("concrete", { key: "fuel", item: "Fuel surcharge", qty: m3, unit: "m³", rate: readyMix ? 2 : null, digits: 1, source: readyMix ? "CBM ready-mix, Greater Toronto" : "" });
+    if (smallLoad > 0) price("concrete", { key: "short", item: "Small-load delivery", qty: 1, unit: "load", rate: readyMix ? smallLoad : null, source: readyMix ? "CBM ready-mix, Greater Toronto" : "" });
     const baseM3 = Math.ceil(((slab * (4 / 12) / 35.3147) * w) * 10) / 10;
     price("concrete", { key: "gravel", item: "Gravel base, 4 in", qty: baseM3, unit: "m³", rate: null, digits: 1 });
     price("concrete", { key: "mesh", item: "Wire mesh", qty: tkUp(slab * w), unit: "sq ft", rate: null });
@@ -494,7 +573,7 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     const masonA = tkNum(i.masonryArea) || wall;
     const brick = i.masonryType !== "block";
     if (brick) {
-      price("masonry", { key: "brick", item: "Thin brick veneer", qty: tkUp(masonA * w), unit: "sq ft", rate: 13 });
+      price("masonry", { key: "brick", item: "Thin brick veneer", qty: tkUp(masonA * w), unit: "sq ft", rate: null });
       addSection({ id: "masonry", label: "Masonry", hours: masonA, rate: laborRateFor("masonry"), laborUnit: "sq ft", qty: masonA, unit: "sq ft" });
     } else {
       const blockRateRaw = laborRates && laborRates.masonryBlock;
@@ -680,8 +759,8 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
   const takeoffs = state.takeoffs || [];
   const [form, setForm] = useStateTk(() => tkBlankForm());
   const result = useMemoTk(
-    () => tkProjectBid(form),
-    [form]
+    () => tkProjectBid({ ...form, country: business?.country }),
+    [form, business?.country]
   );
   const missingKey = (result.missing || []).map((m) => m.id).join("|");
   const [priceAlert, setPriceAlert] = useStateTk(null);
@@ -1166,7 +1245,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
                   <tr className="tk-section"><td colSpan={4}>{sec.label}</td></tr>
                   {result.rows.filter((r) => r.scope === sec.id).map((r) =>
                   <tr key={r.key}>
-                    <td>{r.item}</td>
+                    <td>{r.item}{r.source ? <div className="tk-help">{r.source}</div> : null}</td>
                     <td className="num"><b>{tkFmt(r.qty, r.digits || 0)}</b> <span className="tk-unit-inline">{r.unit}</span></td>
                     <td className="num">
                       <input
@@ -1204,7 +1283,7 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
             <div className="tk-bid-row"><span>Profit ({result.profitPct}%)</span><span>{fmtMoney(result.profit)}</span></div>
             <div className="tk-bid-row is-grand"><span>Bid total</span><span>{fmtMoney(result.bid)}</span></div>
           </div>
-          <p className="tk-help">Quantities are rounded up. Labor hours are rounded up to the next half hour. Prices and hourly rates are editable defaults — confirm them before you send the estimate.</p>
+          <p className="tk-help">{tkShelfBook(business?.country).unavailable ? `No Home Depot price list for ${business?.country || "this country"}. Material lines stay blank until you enter a price.` : `Material prices are ${tkShelfBook(business?.country).source} shelf prices in ${tkShelfBook(business?.country).currency}. A line with no listed price stays blank.`} Quantities are rounded up. Labor hours are rounded up to the next half hour. Confirm every price before you send the estimate.</p>
 
           <div className="tk-actions">
             <button type="button" className="btn" onClick={startNew}>New bid</button>
