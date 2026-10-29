@@ -708,7 +708,22 @@ function App() {
       };
     });
 
-    const rowsData = [...expenses, ...paidBills]
+    const payroll = (state.paystubs || []).map((p) => {
+      const row = paystubAsExpense(p, state.employees);
+      return {
+        date: row.date,
+        vendor: row.vendor,
+        note: row.note,
+        category: "Payroll",
+        method: "Payroll",
+        amount: row.amount,
+        source: "payroll",
+        status: "",
+        receipt: null,
+      };
+    });
+
+    const rowsData = [...expenses, ...paidBills, ...payroll]
       .filter((r) => inDuration(r.date))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 

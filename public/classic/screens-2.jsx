@@ -1702,39 +1702,29 @@ function BillsScreen({ state, dispatch, toast, userId, params }) {
 window.BillsScreen = BillsScreen;
 
 /* ---------- Paystubs ---------- */
+function localDateInput(d) {
+  const dt = d instanceof Date ? d : new Date();
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
 function PaystubsScreen({ state, dispatch, business, toast, params, billingStatus, refreshBilling }) {
+  const today = new Date();
+  const fifteenAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 15);
   const [paywall, setPaywall] = useState2({ open: false, checkoutUrl: null });
   const [paywallBusy, setPaywallBusy] = useState2(false);
-
-  if (!state.employees.length) {
-    return (
-      <>
-        <div className="toolbar">
-          <div className="left">
-            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-              0 statements on file
-            </span>
-          </div>
-        </div>
-        <div className="empty" style={{ marginTop: 24 }}>
-          No employees yet. Add someone under Employees before generating pay statements.
-        </div>
-      </>
-    );
-  }
-
-  const today = new Date();
-  const fifteenAgo = new Date(today.getTime() - 15 * 86400000);
-  const [employeeId, setEmployeeId] = useState2(params?.employeeId || state.employees[0].id);
-  const [start, setStart] = useState2(fifteenAgo.toISOString().slice(0, 10));
-  const [end, setEnd] = useState2(today.toISOString().slice(0, 10));
+  const [employeeId, setEmployeeId] = useState2(params?.employeeId || state.employees[0]?.id || "");
+  const [start, setStart] = useState2(localDateInput(fifteenAgo));
+  const [end, setEnd] = useState2(localDateInput(today));
   const [hours, setHours] = useState2(80);
   const [overtimeHours, setOvertimeHours] = useState2(0);
   const [commissionPct, setCommissionPct] = useState2(0);
   const [paystubMonth, setPaystubMonth] = useState2("");
   const paystubPreviewRef = useRef(null);
-  const [issued, setIssued] = useState2(today.toISOString().slice(0, 10));
-  const [stub, setStub] = useState2(state.paystubs[0]);
+  const [issued, setIssued] = useState2(localDateInput(today));
+  const [stub, setStub] = useState2(() => {
+    const id = params?.employeeId || state.employees[0]?.id;
+    return (state.paystubs || []).find((p) => p.employeeId === id) || null;
+  });
   const [generated, setGenerated] = useState2(false);
 
   // Confirmation modal state — opened before actually creating the stub.
@@ -1742,12 +1732,16 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
   const [confirmTaxes, setConfirmTaxes] = useState2([]);
   const [confirmDeductions, setConfirmDeductions] = useState2([]);
 
-  const emp = state.employees.find((e) => e.id === employeeId) || state.employees[0];
+  const emp = state.employees.find((e) => e.id === employeeId) || state.employees[0] || null;
+
+  React.useEffect(() => {
+    if (!employeeId && state.employees[0]) setEmployeeId(params?.employeeId || state.employees[0].id);
+  }, [state.employees, employeeId, params?.employeeId]);
 
   React.useEffect(() => {
     setOvertimeHours(0);
     setCommissionPct(0);
-  }, [employeeId, emp.payType]);
+  }, [employeeId, emp && emp.payType]);
 
   React.useEffect(() => {
     if (params?.employeeId && params.employeeId !== employeeId) {
@@ -1756,8 +1750,16 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
     }
   }, [params?.employeeId]);
 
+  React.useEffect(() => {
+    setStub((current) => {
+      if (current && current.employeeId === employeeId) return current;
+      return (state.paystubs || []).find((p) => p.employeeId === employeeId) || null;
+    });
+  }, [employeeId, state.paystubs]);
+
   // Compute gross + earnings from current form state.
   const computeGross = () => {
+    if (!emp) return { gross: 0, earnings: [] };
     if (emp.payType === "Hourly") {
       const regular = +(emp.payRate * hours).toFixed(2);
       const overtimeRate = +(emp.payRate * 1.5).toFixed(2);
@@ -1782,11 +1784,12 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
 
   // STEP 1: open the confirmation modal preloaded with the employee's
   // country withholdings. User can edit / add / remove before confirming.
-  const empLocation = emp.region
+  const empLocation = !emp ? "" : emp.region
     ? `${emp.country || "United States"} · ${emp.region}`
     : (emp.country || "United States");
 
   const openConfirm = () => {
+    if (!emp) return;
     const preset = window.SEED.getWithholdingPresets
       ? window.SEED.getWithholdingPresets(emp.country || "United States", emp.region)
       : (window.SEED.COUNTRY_PRESETS || {})[emp.country || "United States"] || [];
@@ -1834,7 +1837,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
   const previewDedTotal = confirmDeductions.reduce((s, d) => s + previewGross * (Number(d.rate) || 0) + (Number(d.fixed) || 0), 0);
   const previewNet = previewGross - previewTaxTotal - previewDedTotal;
 
-  const filteredPaystubs = state.paystubs
+  const filteredPaystubs = (state.paystubs || [])
     .filter((p) => !paystubMonth || String(p.issued || "").startsWith(paystubMonth))
     .sort((a, b) => String(b.issued || "").localeCompare(String(a.issued || "")));
 
@@ -1891,6 +1894,23 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
       downloadCurrentPaystubPdf();
     }
   }, [params?.billingDownload, currentStub?.id]);
+
+  if (!state.employees.length || !emp) {
+    return (
+      <>
+        <div className="toolbar">
+          <div className="left">
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+              0 statements on file
+            </span>
+          </div>
+        </div>
+        <div className="empty" style={{ marginTop: 24 }}>
+          No employees yet. Add someone under Employees before generating pay statements.
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -1984,7 +2004,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
               <div className="kicker" style={{ marginBottom: 10 }}>Past statements · {emp.name.split(" ")[0]}</div>
               <div className="list-card">
                 {employeeStubs.map((p) =>
-              <div key={p.id} className={"row " + (p.id === stub.id ? "active" : "")} onClick={() => {setStub(p);setGenerated(true);}}>
+              <div key={p.id} className={"row " + (stub && p.id === stub.id ? "active" : "")} onClick={() => {setStub(p);setGenerated(true);}}>
                     <span className="name" style={{ fontSize: 14 }}>{fmtDate(p.periodStart)} → {fmtDate(p.periodEnd)}</span>
                     <span className="amount">{fmtMoney(p.gross)}</span>
                     <span className="meta">Issued {fmtDate(p.issued)}</span>
@@ -2001,7 +2021,7 @@ function PaystubsScreen({ state, dispatch, business, toast, params, billingStatu
               <Icon name="download" size={13} /> Download PDF
             </button>
           </div>
-          {generated || employeeStubs.length > 0 ?
+          {stub && (generated || employeeStubs.some((p) => p.id === stub.id)) ?
           <div ref={paystubPreviewRef} className="doc-pdf-letter">
               <PaystubDocument stub={stub} employee={state.employees.find((e) => e.id === stub.employeeId)} business={business} />
             </div> :
@@ -2178,7 +2198,7 @@ function EmployeeDrawer({ open, employee, onClose, onSave, onDelete }) {
   const isEdit = !!employee;
   const blank = {
     name: "", role: "", payType: "Salary", payRate: 60000,
-    taxRate: 0.20, since: new Date().toISOString().slice(0, 7),
+    taxRate: 0.20, since: localDateInput(new Date()).slice(0, 7),
     country: "United States",
     region: (window.SEED.getRegionOptions && window.SEED.getRegionOptions("United States")[0]) || "",
   };
@@ -2532,38 +2552,28 @@ window.TransactionHistoryScreen = TransactionHistoryScreen;
 
 /* ---------- Reports ---------- */
 function ReportsScreen({ state }) {
-  const billCategory = { id: "bills", name: "Bills", color: "#6e1f1f" };
-  const expenseRows = [
-  ...state.expenses,
-  ...(state.bills || []).map((b) => ({
-    id: b.id,
-    category: "bills",
-    amount: Number(b.amount || 0),
-    date: b.issueDate || b.createdAt?.slice(0, 10) || "",
-  }))];
+  const monthKeys = lastMonthKeys(6);
+  const paidBills = (state.bills || []).filter((b) => (b.status || "").toLowerCase() === "paid").map(paidBillAsExpense);
+  const payroll = (state.paystubs || []).map((p) => paystubAsExpense(p, state.employees));
+  const expenseRows = [...state.expenses, ...paidBills, ...payroll].filter((e) => monthKeys.includes(String(e.date || "").slice(0, 7)));
 
   const byCategory = useMemo2(() => {
     const m = {};
     expenseRows.forEach((e) => {m[e.category] = (m[e.category] || 0) + Number(e.amount || 0);});
-    const withBills = [...state.CATEGORIES, billCategory];
-    return withBills.map((c) => ({ ...c, value: m[c.id] || 0 })).sort((a, b) => b.value - a.value);
+    const withExtras = [...state.CATEGORIES, BILLS_CATEGORY, PAYROLL_CATEGORY];
+    return withExtras.map((c) => ({ ...c, value: m[c.id] || 0 })).sort((a, b) => b.value - a.value);
   }, [expenseRows, state.CATEGORIES]);
 
   const maxCat = Math.max(...byCategory.map((c) => c.value), 1);
 
   const byMonth = useMemo2(() => {
     const m = {};
-    const now = new Date();
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    });
     expenseRows.forEach((e) => {
       const k = (e.date || "").slice(0, 7);
       if (k) m[k] = (m[k] || 0) + Number(e.amount || 0);
     });
-    return months.map((k) => ({ k, v: m[k] || 0 }));
-  }, [expenseRows]);
+    return monthKeys.map((k) => ({ k, v: m[k] || 0 }));
+  }, [expenseRows, monthKeys]);
 
   const maxMonth = Math.max(...byMonth.map((m) => m.v), 1);
 
@@ -2618,7 +2628,8 @@ function ReportsScreen({ state }) {
               const x = 40 + i * 50;
               const h = m.v / maxMonth * 130;
               const y = 170 - h;
-              const label = new Date(m.k + "-01").toLocaleDateString("en-US", { month: "short" });
+              const [year, month] = m.k.split("-").map(Number);
+              const label = new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "short" });
               return (
                 <g key={m.k}>
                   <rect x={x} y={y} width="30" height={h} fill="var(--accent)" opacity={i === byMonth.length - 1 ? 1 : 0.55} />

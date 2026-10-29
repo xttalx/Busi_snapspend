@@ -15,6 +15,7 @@ const TK_PROFIT_PCT = 15;
 
 const TK_SCOPES = [
   { id: "framing", label: "Framing", rate: 75, blurb: "Studs, plates, headers and fasteners." },
+  { id: "insulation", label: "Insulation / vapor barrier", rate: 55, blurb: "Batt insulation and poly vapor barrier. A line with no shelf price stays blank." },
   { id: "drywall", label: "Drywall installation", rate: 65, blurb: "Hang the board. Tape and finish are mudding." },
   { id: "mud", label: "Mudding", rate: 70, blurb: "Tape, compound and sand to a finish level." },
   { id: "paint", label: "Paint", rate: 55, blurb: "Primer, finish coats and trim." },
@@ -133,6 +134,10 @@ const TK_DEFAULTS = {
   framingSize: "2x4",
   corners: 4,
   sheathing: false,
+  insulArea: "",
+  insulR: "R-20",
+  vaporBarrier: true,
+  insulCeiling: true,
   boardArea: "",
   sheet: "4x8",
   thickness: "1/2",
@@ -424,6 +429,21 @@ function tkProjectBid({ inputs, scopes, projectType, waste, laborRates, laborHou
     if (type === "renovation") price("framing", { key: "demo", item: "Demo & dispose existing framing", qty: tkUp(wallLen), unit: "lin ft", rate: 6 });
     if (type === "addition") price("framing", { key: "ledger", item: "Ledger / tie-in to existing structure", qty: 1, unit: "allowance", rate: 250 });
     addSection({ id: "framing", label: "Framing", hours: tkHours(hours * factor), rate: laborRateFor("framing"), qty: wallLen, unit: "lin ft" });
+  }
+
+  if (on.has("insulation")) {
+    const insulA = tkNum(i.insulArea) || wall + (i.insulCeiling ? floorSum : 0);
+    if (insulA > 0) {
+      const rValue = i.insulR || "R-20";
+      price("insulation", { key: "batt-" + rValue, item: `Fiberglass batt ${rValue}`, qty: tkUp(insulA * w), unit: "sq ft", rate: null });
+      if (i.vaporBarrier !== false) {
+        price("insulation", { key: "vapor", item: "6 mil vapor barrier", qty: tkUp(insulA * w), unit: "sq ft", rate: null });
+        price("insulation", { key: "vtape", item: "Vapor barrier seam tape", qty: Math.max(1, tkUp(insulA / 200)), unit: "rolls", rate: null });
+      }
+      let insulHours = insulA / 90;
+      if (i.vaporBarrier !== false) insulHours += insulA / 250;
+      addSection({ id: "insulation", label: "Insulation / vapor barrier", hours: tkHours(insulHours * factor), rate: laborRateFor("insulation"), qty: insulA, unit: "sq ft" });
+    }
   }
 
   if (on.has("drywall") && board > 0) {
@@ -1009,6 +1029,12 @@ function TakeoffsScreen({ state, dispatch, business, toast, go }) {
       { key: "framingSize", label: "Lumber", type: "select", options: [["2x4", "2×4"], ["2x6", "2×6"]] },
       { key: "corners", label: "Corners & T-walls", unit: "qty" },
       { key: "sheathing", label: "Exterior sheathing (OSB)", type: "toggle" },
+    ],
+    insulation: [
+      { key: "insulArea", label: "Area", unit: "sq ft", placeholder: "Uses walls, plus the ceiling when it is on" },
+      { key: "insulR", label: "Batt", type: "select", options: [["R-12", "R-12 · 2×4 wall"], ["R-20", "R-20 · 2×6 wall"], ["R-22", "R-22 · 2×6 wall"]] },
+      { key: "vaporBarrier", label: "6 mil vapor barrier", type: "toggle" },
+      { key: "insulCeiling", label: "Include the ceiling", type: "toggle" },
     ],
     drywall: [
       { key: "boardArea", label: "Board area", unit: "sq ft", placeholder: "Uses walls" },

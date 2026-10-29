@@ -302,9 +302,14 @@ function InvoiceDocument({ invoice, client, business }) {
 }
 
 function PaystubDocument({ stub, employee, business }) {
-  const totalTax = stub.taxes.reduce((s, t) => s + t.v, 0);
-  const totalDed = stub.deductions.reduce((s, t) => s + t.v, 0);
-  const net = stub.gross - totalTax - totalDed;
+  if (!stub || !employee) return null;
+  const earnings = stub.earnings || [];
+  const taxes = stub.taxes || [];
+  const deductions = stub.deductions || [];
+  const totalTax = taxes.reduce((s, t) => s + Number(t.v || 0), 0);
+  const totalDed = deductions.reduce((s, t) => s + Number(t.v || 0), 0);
+  const net = Number(stub.gross || 0) - totalTax - totalDed;
+  const employerId = business?.businessNo || business?.gstTaxId || "";
 
   return (
     <div className="doc-shell">
@@ -331,7 +336,7 @@ function PaystubDocument({ stub, employee, business }) {
             <div className="lbl">Employer</div>
             <p className="name">{business.name}</p>
             <p>{business.address}</p>
-            <p>EIN 00-0000000</p>
+            {employerId ? <p>{employerId}</p> : null}
           </div>
         </div>
 
@@ -353,25 +358,25 @@ function PaystubDocument({ stub, employee, business }) {
         <div className="paystub-grid">
           <div className="panel">
             <h4>Earnings</h4>
-            {stub.earnings.map((e, i) =>
+            {earnings.map((e, i) =>
             <div className="li" key={i}><span>{e.k}</span><span>{fmtMoney(e.v)}</span></div>
             )}
             <div className="li total"><span>Gross pay</span><span>{fmtMoney(stub.gross)}</span></div>
           </div>
           <div className="panel">
             <h4>Taxes withheld</h4>
-            {stub.taxes.map((e, i) =>
+            {taxes.map((e, i) =>
             <div className="li" key={i}><span>{e.k}</span><span>{fmtMoney(e.v)}</span></div>
             )}
             <div className="li total"><span>Total taxes</span><span>{fmtMoney(totalTax)}</span></div>
           </div>
         </div>
 
-        {stub.deductions.length > 0 &&
+        {deductions.length > 0 &&
         <div className="paystub-grid" style={{ gridTemplateColumns: "1fr" }}>
             <div className="panel">
               <h4>Other deductions</h4>
-              {stub.deductions.map((e, i) =>
+              {deductions.map((e, i) =>
             <div className="li" key={i}><span>{e.k}</span><span>{fmtMoney(e.v)}</span></div>
             )}
               <div className="li total"><span>Total deductions</span><span>{fmtMoney(totalDed)}</span></div>

@@ -86,6 +86,24 @@ function paidBillAsExpense(bill) {
   };
 }
 
+const PAYROLL_CATEGORY = { id: "payroll", name: "Payroll", color: "#1f4d3a" };
+const BILLS_CATEGORY = { id: "bills", name: "Bills", color: "#6e1f1f" };
+
+function paystubAsExpense(stub, employees) {
+  const emp = (employees || []).find((e) => e.id === stub?.employeeId);
+  const gross = Number(stub?.gross || 0);
+  return {
+    id: "pay-" + stub.id,
+    date: stub.issued || String(stub.createdAt || "").slice(0, 10),
+    vendor: emp?.name || "Payroll",
+    note: emp?.role ? `Payroll · ${emp.role}` : "Payroll",
+    category: "payroll",
+    method: "Payroll",
+    amount: gross,
+    isPayroll: true,
+  };
+}
+
 /* ---------- Dashboard primitives ---------- */
 function dashMoney(n) {
   return (n < 0 ? "−" : "") + "$" + Math.round(Math.abs(n)).toLocaleString("en-US");
@@ -200,8 +218,8 @@ function Dashboard({ state, go }) {
     expenses.filter((e) => (e.date || "").startsWith(k)).reduce((s, e) => s + Number(e.amount || 0), 0);
   const billsIn = (k) =>
     bills.filter((b) => (b.issueDate || "").startsWith(k)).reduce((s, b) => s + Number(b.amount || 0), 0);
-  const expensesIn = (k) => directExpensesIn(k) + billsIn(k);
-  const wagesIn = (k) => paystubs.filter(p => p.issued && p.issued.startsWith(k)).reduce((s, p) => s + p.gross, 0);
+  const wagesIn = (k) => paystubs.filter(p => p.issued && p.issued.startsWith(k)).reduce((s, p) => s + Number(p.gross || 0), 0);
+  const expensesIn = (k) => directExpensesIn(k) + billsIn(k) + wagesIn(k);
 
   const year = String(now.getFullYear());
   const prevYear = String(now.getFullYear() - 1);
@@ -210,17 +228,17 @@ function Dashboard({ state, go }) {
   const prevYtdKeys = ytdMonthKeys(prevYear, new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
 
   const yearRevenue = sumInKeys(ytdKeys, revenue);
-  const yearExpense = sumInKeys(ytdKeys, directExpensesIn);
+  const yearExpense = sumInKeys(ytdKeys, (k) => directExpensesIn(k) + wagesIn(k));
   const yearWages = sumInKeys(ytdKeys, wagesIn);
   const yearBills = sumInKeys(ytdKeys, billsIn);
 
   const prevYearRevenue = sumInKeys(prevYtdKeys, revenue);
-  const prevYearExpense = sumInKeys(prevYtdKeys, directExpensesIn);
+  const prevYearExpense = sumInKeys(prevYtdKeys, (k) => directExpensesIn(k) + wagesIn(k));
   const prevYearWages = sumInKeys(prevYtdKeys, wagesIn);
   const prevYearBills = sumInKeys(prevYtdKeys, billsIn);
 
-  const yearNet = yearRevenue - yearExpense - yearWages - yearBills;
-  const prevYearNet = prevYearRevenue - prevYearExpense - prevYearWages - prevYearBills;
+  const yearNet = yearRevenue - yearExpense - yearBills;
+  const prevYearNet = prevYearRevenue - prevYearExpense - prevYearBills;
 
   const netIn = (k) => revenue(k) - directExpensesIn(k) - billsIn(k) - wagesIn(k);
   let runningNet = 0;
@@ -229,23 +247,25 @@ function Dashboard({ state, go }) {
   const monthRevenue = revenue(monthKey);
   const monthExpense = expensesIn(monthKey);
   const monthWages = wagesIn(monthKey);
-  const monthNet = monthRevenue - monthExpense - monthWages;
+  const monthNet = monthRevenue - monthExpense;
 
   const prevRevenue = revenue(prevKey);
   const prevExpense = expensesIn(prevKey);
   const prevWages = wagesIn(prevKey);
-  const prevNet = prevRevenue - prevExpense - prevWages;
+  const prevNet = prevRevenue - prevExpense;
 
   const paidThisMonth = invoices.filter(i => i.status === "paid" && i.date.startsWith(monthKey)).length;
   const expenseEntriesThisMonth =
   expenses.filter((e) => (e.date || "").startsWith(monthKey)).length +
-  bills.filter((b) => (b.issueDate || "").startsWith(monthKey)).length;
+  bills.filter((b) => (b.issueDate || "").startsWith(monthKey)).length +
+  paystubs.filter((p) => (p.issued || "").startsWith(monthKey)).length;
 
   const outstanding = invoices.filter(i => i.status === "due" || i.status === "overdue")
     .reduce((s, i) => s + docTaxTotals(i).total, 0);
 
   const paidBillRows = (bills || []).filter((b) => (b.status || "").toLowerCase() === "paid").map(paidBillAsExpense);
-  const recent = [...expenses.map((e) => ({ ...e, isBill: false })), ...paidBillRows].
+  const payrollRows = (paystubs || []).map((p) => paystubAsExpense(p, state.employees));
+  const recent = [...expenses.map((e) => ({ ...e, isBill: false })), ...paidBillRows, ...payrollRows].
   filter((e) => e.date).
   sort((a, b) => b.date.localeCompare(a.date)).
   slice(0, 6);
@@ -312,7 +332,7 @@ function Dashboard({ state, go }) {
           <DashFlowRow
             label="Wages"
             amount={outflow(monthWages)}
-            meta={`${state.employees.length} on payroll`}
+            meta="Included in expenses"
             current={monthWages} previous={prevWages} compare={prevMonthLabel} goodWhen="down"
             onClick={() => go("paystubs", {})} />
           <DashFlowRow
@@ -343,8 +363,7 @@ function Dashboard({ state, go }) {
             ) : (
               <ul className="dash-list">
                 {recent.map((e) => {
-                  const cat = e.isBill ?
-                  { name: "Bills", color: "#6e1f1f" } :
+                  const cat = e.isPayroll ? PAYROLL_CATEGORY : e.isBill ? BILLS_CATEGORY :
                   state.CATEGORIES.find((c) => c.id === e.category);
                   return (
                     <li key={e.id} className="dash-row">
@@ -713,9 +732,13 @@ function Expenses({ state, dispatch, toast }) {
   filter((b) => (b.status || "").toLowerCase() === "paid").
   map(paidBillAsExpense), [state.bills]);
 
+  const payrollEntries = useMemo(() =>
+  (state.paystubs || []).map((p) => paystubAsExpense(p, state.employees)).filter((e) => e.date),
+  [state.paystubs, state.employees]);
+
   const ledgerEntries = useMemo(() =>
-  [...state.expenses.map((e) => ({ ...e, isBill: false })), ...paidBillEntries].
-  filter((e) => e.date), [state.expenses, paidBillEntries]);
+  [...state.expenses.map((e) => ({ ...e, isBill: false })), ...paidBillEntries, ...payrollEntries].
+  filter((e) => e.date), [state.expenses, paidBillEntries, payrollEntries]);
 
   const filtered = useMemo(() => {
     return ledgerEntries
@@ -917,6 +940,10 @@ function Expenses({ state, dispatch, toast }) {
               <span className="swatch" style={{ background: "#6e1f1f", width: 7, height: 7, borderRadius: "50%", display: "inline-block" }}></span>
               Bills (paid)
             </button>
+            <button className={"chip " + (filter === "payroll" ? "active" : "")} onClick={() => setFilter("payroll")}>
+              <span className="swatch" style={{ background: PAYROLL_CATEGORY.color, width: 7, height: 7, borderRadius: "50%", display: "inline-block" }}></span>
+              Payroll
+            </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="btn sm ghost" onClick={() => setExpenseMonth("")}>All months</button>
@@ -1004,8 +1031,7 @@ function Expenses({ state, dispatch, toast }) {
             </tr>
           )}
           {filtered.map(e => {
-            const cat = e.isBill ?
-            { name: "Bills", color: "#6e1f1f" } :
+            const cat = e.isPayroll ? PAYROLL_CATEGORY : e.isBill ? BILLS_CATEGORY :
             state.CATEGORIES.find(c => c.id === e.category);
             const r = e.receipt;
             return (
@@ -1020,7 +1046,7 @@ function Expenses({ state, dispatch, toast }) {
                       </span>
                     )}
                   </div>
-                  <div className="sub">{e.note}{e.isBill ? " · from Bills" : ""}</div>
+                  <div className="sub">{e.note}{e.isBill ? " · from Bills" : ""}{e.isPayroll ? " · from Payroll" : ""}</div>
                 </td>
                 <td>
                   <span className="cat-tag"><span className="swatch" style={{ background: cat?.color || "#999" }}></span>{cat?.name || "Other"}</span>
@@ -1033,20 +1059,22 @@ function Expenses({ state, dispatch, toast }) {
                       {r.type && r.type.startsWith("image/") ? "Image" : "PDF"}
                     </span>
                   ) : (
-                    <span style={{ color: "var(--ink-4)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" }}>{e.isBill ? "from bill" : "—"}</span>
+                    <span style={{ color: "var(--ink-4)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" }}>{e.isPayroll ? "payroll" : e.isBill ? "from bill" : "—"}</span>
                   )}
                 </td>
                 <td>
                   <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                    {!e.isPayroll &&
                     <button
                       className="iconbtn"
                       title={e.receipt ? "Replace receipt" : "Add receipt"}
                       onClick={() => receiptInputRefs.current[e.id] && receiptInputRefs.current[e.id].click()}>
                       <Icon name={e.receipt ? "edit" : "plus"} size={12} />
-                    </button>
+                    </button>}
+                    {!e.isPayroll &&
                     <button className="iconbtn" title="Delete entry" onClick={() => removeLedgerEntry(e)}>
                       <Icon name="close" size={12} />
-                    </button>
+                    </button>}
                     <input
                       type="file"
                       accept="image/*,application/pdf"
